@@ -109,14 +109,14 @@ def load_ibs_data(file_name):
 # ==========================================
 # SIDEBAR: NAVIGAZIONE PRINCIPALE
 # ==========================================
-st.sidebar.header("🛠️ Strumenti")
-piattaforma = st.sidebar.radio("Scegli servizio:", ["🔴 Novità saggistica (30 giorni)", "🟠 Scouting Amazon"])
+st.sidebar.header("Strumenti") # Tolta icona attrezzi
+piattaforma = st.sidebar.radio("Scegli servizio:", ["🆕 Novità saggistica (30 giorni)", "🔍 Scouting Amazon"])
 st.sidebar.markdown("---")
 
 # ==========================================
 # SEZIONE 1: NOVITÀ SAGGISTICA (IBS) - STILE CLASSICO
 # ==========================================
-if piattaforma == "🔴 Novità saggistica (30 giorni)":
+if piattaforma == "🆕 Novità saggistica (30 giorni)":
     st.title("📚 Novità Saggistica")
 
     file_name = "dati_per_app.csv"
@@ -140,8 +140,9 @@ if piattaforma == "🔴 Novità saggistica (30 giorni)":
         df_altri = df_ibs[df_ibs['Categoria_App'] != 'Editori Selezionati'].copy()
 
         # --- SIDEBAR: FILTRI E ORDINAMENTO ---
-        # 1. BARRA DI RICERCA
+        # 1. BARRA DI RICERCA E FILTRO NUOVE USCITE
         search_query = st.sidebar.text_input("🔍 Cerca libro o autore", help="Cerca in entrambe le liste")
+        solo_nuovi = st.sidebar.checkbox("🆕 Mostra solo le nuove uscite")
 
         # 2. FILTRO EDITORE (Solo VIP)
         st.sidebar.subheader("Filtra Selezionati")
@@ -156,6 +157,10 @@ if piattaforma == "🔴 Novità saggistica (30 giorni)":
         )
 
         # --- APPLICAZIONE FILTRI ---
+        if solo_nuovi:
+            df_vip = df_vip[df_vip['Nuovo'] == True]
+            df_altri = df_altri[df_altri['Nuovo'] == True]
+
         if search_query:
             if not df_vip.empty:
                 mask_vip = df_vip.astype(str).apply(lambda x: x.str.contains(search_query, case=False)).any(axis=1)
@@ -243,7 +248,7 @@ if piattaforma == "🔴 Novità saggistica (30 giorni)":
 # ==========================================
 # SEZIONE 2: SCOUTING AMAZON - STILE GRIGLIA
 # ==========================================
-elif piattaforma == "🟠 Scouting Amazon":
+elif piattaforma == "🔍 Scouting Amazon":
     st.title("I più venduti - Amazon")
     st.caption("Esplora i libri più popolari, salvali e aggiungi le tue note.")
 
