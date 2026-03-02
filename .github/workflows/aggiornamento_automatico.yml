@@ -1,0 +1,42 @@
+name: Aggiornamento Libri Giornaliero
+
+on:
+  schedule:
+    - cron: '0 6 * * *' # Alle 06:00 UTC ogni mattina
+  workflow_dispatch: # Permette di lanciarlo a mano
+
+permissions:
+  contents: write
+
+jobs:
+  scrape-and-update:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout del codice
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      # Esegue SOLO lo Scraper IBS
+      - name: Esegui Scraper IBS
+        run: python novita_libri_ibs.py
+
+      - name: Configura Git
+        run: |
+          git config --global user.name 'GitHub Action Bot'
+          git config --global user.email 'action@github.com'
+
+      # Salva SOLO il file CSV di IBS
+      - name: Commit e Push se ci sono cambiamenti
+        run: |
+          git add dati_per_app.csv
+          git commit -m "Aggiornamento automatico dati IBS $(date +'%Y-%m-%d')" || echo "Nessun cambiamento nei dati"
+          git push
