@@ -1,1 +1,1 @@
-# strumenti_editoria_nvp
+# novita-libri-app
