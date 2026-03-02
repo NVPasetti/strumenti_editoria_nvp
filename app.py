@@ -109,12 +109,12 @@ def load_ibs_data(file_name):
 # ==========================================
 # SIDEBAR: NAVIGAZIONE PRINCIPALE
 # ==========================================
-st.sidebar.header("Strumenti") # Tolta icona attrezzi
+st.sidebar.header("Strumenti")
 piattaforma = st.sidebar.radio("Scegli servizio:", ["🆕 Novità saggistica (30 giorni)", "🔍 Scouting Amazon"])
 st.sidebar.markdown("---")
 
 # ==========================================
-# SEZIONE 1: NOVITÀ SAGGISTICA (IBS) - STILE CLASSICO
+# SEZIONE 1: NOVITÀ SAGGISTICA (IBS)
 # ==========================================
 if piattaforma == "🆕 Novità saggistica (30 giorni)":
     st.title("📚 Novità Saggistica")
@@ -140,16 +140,16 @@ if piattaforma == "🆕 Novità saggistica (30 giorni)":
         df_altri = df_ibs[df_ibs['Categoria_App'] != 'Editori Selezionati'].copy()
 
         # --- SIDEBAR: FILTRI E ORDINAMENTO ---
-        # 1. BARRA DI RICERCA E FILTRO NUOVE USCITE
-        search_query = st.sidebar.text_input("🔍 Cerca libro o autore", help="Cerca in entrambe le liste")
+        # 1. Filtro Nuove uscite in alto
         solo_nuovi = st.sidebar.checkbox("🆕 Mostra solo le nuove uscite")
+        
+        # 2. Barra di ricerca subito sotto
+        search_query = st.sidebar.text_input("🔍 Cerca libro o autore", help="Cerca in entrambe le liste")
 
-        # 2. FILTRO EDITORE (Solo VIP)
         st.sidebar.subheader("Filtra Selezionati")
         editori_disponibili = sorted(df_vip['Editore'].unique())
         sel_editore = st.sidebar.multiselect("Seleziona Editore", editori_disponibili)
 
-        # 3. ORDINAMENTO (Solo VIP)
         st.sidebar.subheader("Ordina Selezionati")
         sort_mode = st.sidebar.selectbox(
             "Criterio di ordinamento:",
@@ -185,68 +185,53 @@ if piattaforma == "🆕 Novità saggistica (30 giorni)":
         # --- INTERFACCIA A TAB ---
         tab1, tab2 = st.tabs([f"⭐ Editori Selezionati ({len(df_vip)})", f"📂 Altri Editori ({len(df_altri)})"])
 
-        # === TAB 1: EDITORI SELEZIONATI ===
         with tab1:
             if df_vip.empty:
                 st.info("Nessun libro trovato con i filtri attuali.")
-            
             for _, row in df_vip.iterrows():
                 with st.container():
                     c1, c2 = st.columns([1, 5])
-                    
                     with c1:
                         url = row['Copertina']
                         if pd.notna(url) and str(url).startswith('http'):
                             st.image(str(url), width=120)
                         else:
                             st.text("🖼️ No Img")
-                    
                     with c2:
                         badge = "🆕 " if row['Nuovo'] else ""
                         st.subheader(f"{badge}{row['Titolo']}")
-                        
                         st.markdown(f"**{row.get('Autore', 'N/D')}** | *{row.get('Editore', 'N/D')}* ({row.get('Anno', '')})")
-                        
                         desc = str(row.get('Descrizione', ''))
                         if len(desc) > 10 and desc.lower() != "nan":
                             with st.expander("📖 Leggi sinossi"):
                                 st.write(desc)
-                        
                         link = row.get('Link')
                         if pd.notna(link) and str(link).startswith('http'):
                             st.markdown(f"[➡️ Vedi su IBS]({link})")
-                    
                     st.divider()
 
-        # === TAB 2: ALTRI EDITORI ===
         with tab2:
             st.caption("Libri di altri editori (lista standard).")
-            
             if df_altri.empty:
                 st.info("Nessun libro in questa categoria.")
-
             for _, row in df_altri.iterrows():
                 with st.container():
                     c_img, c_info = st.columns([0.5, 5])
-                    
                     with c_img:
                         url = row['Copertina']
                         if pd.notna(url) and str(url).startswith('http'):
                             st.image(str(url), width=60)
-                    
                     with c_info:
                         badge = "🆕 " if row['Nuovo'] else ""
                         st.markdown(f"{badge}**{row['Titolo']}**")
                         st.markdown(f"{row.get('Autore', 'N/D')} - *{row.get('Editore', 'N/D')}*")
-                        
                         link = row.get('Link')
                         if pd.notna(link) and str(link).startswith('http'):
                             st.markdown(f"[Link]({link})")
-                    
                     st.markdown("---")
 
 # ==========================================
-# SEZIONE 2: SCOUTING AMAZON - STILE GRIGLIA
+# SEZIONE 2: SCOUTING AMAZON
 # ==========================================
 elif piattaforma == "🔍 Scouting Amazon":
     st.title("I più venduti - Amazon")
@@ -255,8 +240,19 @@ elif piattaforma == "🔍 Scouting Amazon":
     # Mostra Wishlist Info solo qui
     num_salvati = len(st.session_state.libri_salvati)
     st.sidebar.metric(label="❤️ Appunti & Salvati", value=f"{num_salvati} libri")
+    
+    # --- FILTRO SALVATI IN ALTO ---
+    mostra_salvati_amz = st.sidebar.checkbox("Visualizza solo i Salvati")
+    
+    # --- POP-UP DI CONFERMA PER SVUOTA SALVATI ---
     if num_salvati > 0:
-        st.sidebar.button("🗑️ Svuota Salvati", on_click=svuota_salvati_db, type="secondary", use_container_width=True)
+        with st.sidebar.popover("🗑️ Svuota Salvati", use_container_width=True):
+            st.markdown("⚠️ **Sei sicuro?**")
+            st.caption("Questa azione eliminerà tutti i libri salvati e i tuoi appunti in modo definitivo.")
+            if st.button("Sì, svuota tutto", type="primary", use_container_width=True):
+                svuota_salvati_db()
+                st.rerun()
+
     st.sidebar.markdown("---")
 
     if 'limite_libri_amz' not in st.session_state: st.session_state.limite_libri_amz = 150
@@ -279,8 +275,6 @@ elif piattaforma == "🔍 Scouting Amazon":
         
         ord_amz = st.sidebar.radio("Ordina per recensioni:", ["Decrescente (Più recensioni)", "Crescente (Meno recensioni)"])
         is_ascending_amz = True if ord_amz == "Crescente (Meno recensioni)" else False
-        
-        mostra_salvati_amz = st.sidebar.checkbox("Visualizza solo i Salvati")
 
         if (sel_cat_amz != st.session_state.filtro_cat_amz or min_rec_amz != st.session_state.filtro_rec_amz or 
             ord_amz != st.session_state.filtro_ord_amz or mostra_salvati_amz != st.session_state.filtro_salvati_amz):
