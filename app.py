@@ -234,7 +234,7 @@ if piattaforma == "🆕 Novità saggistica (30 giorni)":
 # SEZIONE 2: SCOUTING AMAZON
 # ==========================================
 elif piattaforma == "🔍 Scouting Amazon":
-    st.title("I più venduti - Amazon")
+    st.title("I più recensiti - Amazon")
     st.caption("Esplora i libri più popolari, salvali e aggiungi le tue note.")
 
     # Mostra Wishlist Info solo qui
