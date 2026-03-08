@@ -1,243 +1,378 @@
-import sys
-import time
-import os
+import streamlit as st
 import pandas as pd
-import re
-import random
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from webdriver_manager.chrome import ChromeDriverManager
-from bs4 import BeautifulSoup
+import os
+from supabase import create_client, Client
 
-# --- CONFIGURAZIONE ---
-NUM_PAGINE_PER_CATEGORIA = 100  # <--- MODIFICATO DA 300 A 100 PER VELOCIZZARE
-MIN_RECENSIONI_VECCHI = 60      # Soglia per i libri meno recenti
-MIN_RECENSIONI_NUOVI = 35       # Soglia ridotta per le uscite post-Luglio 2025
-OUTPUT_FILE = "amazon_libri_multicat.csv"
+# --- CONFIGURAZIONE PAGINA ---
+st.set_page_config(page_title="Strumenti Editoriali", layout="wide", page_icon="📚")
 
-# --- DEFINIZIONE CATEGORIE (URL PULITI) ---
-CATEGORIES = [
-    {"name": "Politica", "rh": "n%3A411663031%2Cn%3A508811031"},
-    {"name": "Società e scienze sociali", "rh": "n%3A411663031%2Cn%3A508879031"},
-    {"name": "Storia", "rh": "n%3A411663031%2Cn%3A508796031"},
-    {"name": "Diari, biografie, memorie", "rh": "n%3A411663031%2Cn%3A508714031"},
-    {"name": "Arte, cinema e fotografia", "rh": "n%3A411663031%2Cn%3A508758031"},
-    {"name": "Scienze, tecnologia, medicina", "rh": "n%3A411663031%2Cn%3A508867031"},
-    {"name": "Religione e spiritualità", "rh": "n%3A508745031"}
-]
+# --- CONNESSIONE A SUPABASE ---
+@st.cache_resource
+def init_supabase() -> Client:
+    url = st.secrets["SUPABASE_URL"]
+    key = st.secrets["SUPABASE_KEY"]
+    return create_client(url, key)
 
-# --- FIX ENCODING ---
-if sys.stdout.encoding != 'utf-8':
-    try:
-        sys.stdout.reconfigure(encoding='utf-8')
-    except AttributeError:
-        pass
+try:
+    supabase = init_supabase()
+except Exception as e:
+    st.error(f"Errore di connessione a Supabase: {e}")
+    supabase = None
 
-def setup_driver():
-    chrome_options = Options()
-    chrome_options.add_argument("--start-maximized")
-    chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-    chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
-    chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
-    chrome_options.add_experimental_option('useAutomationExtension', False)
-
-    service = Service(ChromeDriverManager().install())
-    driver = webdriver.Chrome(service=service, options=chrome_options)
-    return driver
-
-def check_captcha(driver):
-    if "inserisci i caratteri" in driver.page_source.lower() or driver.find_elements(By.ID, 'captchacharacters'):
-        print("\n" + "!"*50)
-        print("⚠️  AMAZON CAPTCHA RILEVATO!  ⚠️")
-        print("Vai sul browser, risolvilo e poi premi INVIO qui.")
-        print("!"*50 + "\n")
-        input("Premi INVIO dopo aver risolto...")
-        driver.refresh()
-        time.sleep(3)
-        return True
-    return False
-
-def clean_reviews_count(text):
-    if not text: return 0
-    clean = re.sub(r'[^\d]', '', text)
-    return int(clean) if clean else 0
-
-def is_multiple_author(author_text):
-    if not author_text: return True 
-    text = author_text.lower()
-    if ',' in text: return True
-    if re.search(r'\b(?:e|and|et)\b', text): return True
-    return False
-
-def extract_date(text):
-    if not text: return ""
-    match = re.search(r'(\d{1,2}\s+[a-zA-Z]{3}\.?\s+\d{4})', text)
-    return match.group(1) if match else ""
-
-def is_recente_dopo_luglio_2025(date_text):
-    """
-    Analizza la data (es: '15 ott 2025' o '5 giu. 2026') 
-    e restituisce True se è successiva a Luglio 2025.
-    """
-    if not date_text: return False
-    
-    mesi = {
-        'gen': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'mag': 5, 'giu': 6,
-        'lug': 7, 'ago': 8, 'set': 9, 'ott': 10, 'nov': 11, 'dic': 12
-    }
-    
-    match = re.search(r'(\d{1,2})\s+([a-z]{3})\.?\s+(\d{4})', date_text.lower())
-    if match:
-        month_str = match.group(2)
-        year = int(match.group(3))
-        month = mesi.get(month_str, 0)
-        
-        if year > 2025:
-            return True
-        if year == 2025 and month > 7:
-            return True
-            
-    return False
-
-def append_to_csv(data_list, filename):
-    if not data_list: return
-    df = pd.DataFrame(data_list)
-    file_exists = os.path.isfile(filename)
-    df.to_csv(filename, mode='a', header=not file_exists, index=False, encoding='utf-8')
-
-def sort_final_csv(filename):
-    if os.path.exists(filename):
-        print(f"\n--- Riordino finale del file CSV: {filename} ---")
-        df = pd.read_csv(filename)
-        df = df.sort_values(by=['Categoria', 'Recensioni'], ascending=[True, False])
-        df.to_csv(filename, index=False, encoding='utf-8')
-        print(f"✅ File CSV ordinato e completato correttamente: {len(df)} righe totali.")
-
-def estrai_dati_libro(card, cat_name, visti_asin):
-    asin = card.get('data-asin')
-    if not asin or asin in visti_asin: 
-        return None
-    
-    # Titolo
-    title_tag = card.find('h2')
-    title = title_tag.get_text(strip=True) if title_tag else "N/D"
-    
-    # Autore
-    author = "N/D"
-    author_rows = card.find_all('div', class_='a-row')
-    for row in author_rows:
-        row_text = row.get_text(" ", strip=True)
-        match = re.match(r'^(?:di\s*:?|Di\s*:?)\s*(.+)', row_text)
-        if match:
-            raw_auth = match.group(1).split('|')[0].split('(')[0]
-            author = raw_auth.strip()
-            break
-            
-    if author == "N/D" or is_multiple_author(author): 
-        return None
-
-    # Recensioni
-    reviews_count = 0
-    review_tag = card.find(lambda tag: tag.name == 'a' and tag.has_attr('aria-label') and ('valutazioni' in tag['aria-label'] or 'voti' in tag['aria-label']))
-    
-    if review_tag:
-        reviews_count = clean_reviews_count(review_tag['aria-label'].split()[0])
-    else:
-        review_span = card.find('span', class_='s-underline-text')
-        if review_span:
-            reviews_count = clean_reviews_count(review_span.get_text())
-
-    # Data
-    full_card_text = card.get_text(" ", strip=True)
-    date_found = extract_date(full_card_text)
-
-    # --- LOGICA DEL DOPPIO BINARIO ---
-    if reviews_count >= MIN_RECENSIONI_VECCHI:
-        pass 
-    elif MIN_RECENSIONI_NUOVI <= reviews_count < MIN_RECENSIONI_VECCHI:
-        if not is_recente_dopo_luglio_2025(date_found):
-            return None 
-    else:
-        return None 
-
-    # Immagine
-    img_tag = card.find('img', class_='s-image')
-    img_url = img_tag['src'] if img_tag else ""
-
-    return {
-        'ASIN': asin,
-        'Copertina': img_url,
-        'Titolo': title,
-        'Autore': author,
-        'Data': date_found,
-        'Recensioni': reviews_count,
-        'Categoria': cat_name
-    }
-
-def get_amazon_data(driver, filename):
-    visti_asin = set()
-
-    for cat in CATEGORIES:
-        print(f"\n\n{'='*20} SCANSIONE: {cat['name'].upper()} {'='*20}")
-        
-        for page in range(1, NUM_PAGINE_PER_CATEGORIA + 1):
-            page_books = []
-            
-            url = f"https://www.amazon.it/s?i=stripbooks&rh={cat['rh']}&s=popularity-rank&dc&page={page}"
-
-            print(f"\n{cat['name']} - Pagina {page}/{NUM_PAGINE_PER_CATEGORIA}...")
-            driver.get(url)
-            
-            check_captcha(driver)
-
+# --- FUNZIONI DATABASE (Solo per Amazon) ---
+def carica_preferiti_db():
+    if supabase:
+        try:
+            risposta = supabase.table("wishlist").select("asin, nota").execute()
+            return {r["asin"]: (r.get("nota") or "") for r in risposta.data}
+        except Exception:
             try:
-                WebDriverWait(driver, 10).until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, "div[data-component-type='s-search-result']"))
-                )
-            except:
-                print("❌ Nessun risultato trovato o pagina non caricata (Probabile fine catalogo).")
-                if page > 5: break
-                continue
-                
-            time.sleep(random.uniform(1.0, 2.0))
-            driver.execute_script("window.scrollTo(0, document.body.scrollHeight/2);")
-            time.sleep(0.5)
-            
-            soup = BeautifulSoup(driver.page_source, 'html.parser')
-            results = soup.find_all('div', {'data-component-type': 's-search-result'})
-            print(f"  -> {len(results)} elementi trovati. Elaborazione...")
+                risposta = supabase.table("wishlist").select("asin").execute()
+                return {r["asin"]: "" for r in risposta.data}
+            except Exception:
+                return {}
+    return {}
 
-            count_ok = 0
-            for card in results:
-                book_data = estrai_dati_libro(card, cat['name'], visti_asin)
-                
-                if book_data:
-                    visti_asin.add(book_data['ASIN'])
-                    page_books.append(book_data)
-                    count_ok += 1
-            
-            append_to_csv(page_books, filename)
-            print(f"  -> {count_ok} libri idonei aggiunti al CSV.")
+def salva_preferito_db(item_id):
+    if supabase:
+        try:
+            supabase.table("wishlist").insert({"asin": item_id, "nota": ""}).execute()
+        except Exception:
+            try:
+                supabase.table("wishlist").insert({"asin": item_id}).execute()
+            except Exception as e:
+                st.toast(f"⚠️ Errore salvataggio nel DB: {e}")
 
-def main():
-    if os.path.exists(OUTPUT_FILE):
-        os.remove(OUTPUT_FILE)
-        
-    driver = setup_driver()
+def aggiorna_nota_db(item_id, nota_testo):
+    if supabase:
+        try:
+            supabase.table("wishlist").update({"nota": nota_testo}).eq("asin", item_id).execute()
+        except Exception as e:
+            st.toast("⚠️ Errore aggiornamento nota DB")
+
+def rimuovi_preferito_db(item_id):
+    if supabase:
+        try:
+            supabase.table("wishlist").delete().eq("asin", item_id).execute()
+        except Exception as e:
+            st.toast(f"⚠️ Errore rimozione dal DB: {e}")
+
+def svuota_salvati_db():
+    st.session_state.libri_salvati.clear()
+    if supabase:
+        try:
+            supabase.table("wishlist").delete().neq("asin", "dummy_value").execute()
+        except Exception as e:
+            st.error(f"Errore nello svuotamento: {e}")
+
+# --- INIZIALIZZAZIONE MEMORIA GLOBALE ---
+if 'libri_salvati' not in st.session_state:
+    st.session_state.libri_salvati = carica_preferiti_db()
+
+def toggle_salvataggio(item_id):
+    if item_id in st.session_state.libri_salvati:
+        del st.session_state.libri_salvati[item_id]
+        rimuovi_preferito_db(item_id)
+    else:
+        st.session_state.libri_salvati[item_id] = ""
+        salva_preferito_db(item_id)
+
+# --- FUNZIONI DI CARICAMENTO DATI ---
+@st.cache_data(ttl=3600)
+def load_amazon_data(file_name):
+    if not os.path.exists(file_name): return None
     try:
-        get_amazon_data(driver, OUTPUT_FILE)
-        sort_final_csv(OUTPUT_FILE)
-    except KeyboardInterrupt:
-        print("\n⚠️ Scraping interrotto manualmente. I dati scaricati finora sono salvi nel CSV.")
-        sort_final_csv(OUTPUT_FILE)
-    except Exception as e:
-        print(f"\n❌ Errore imprevisto: {e}")
-    finally:
-        driver.quit()
+        df = pd.read_csv(file_name)
+        df['Titolo'] = df['Titolo'].fillna("Senza Titolo")
+        df['Autore'] = df['Autore'].fillna("N/D")
+        df = df.drop_duplicates(subset=['ASIN'])
+        df = df.drop_duplicates(subset=['Titolo'])
+        return df
+    except Exception: return None
 
-if __name__ == "__main__":
-    main()
+@st.cache_data(ttl=3600)
+def load_ibs_data(file_name):
+    if not os.path.exists(file_name): return None
+    try:
+        df = pd.read_csv(file_name)
+        df['Titolo'] = df['Titolo'].fillna("Senza Titolo")
+        df['Editore'] = df['Editore'].fillna("N/D")
+        if 'Nuovo' not in df.columns:
+            df['Nuovo'] = False
+        else:
+            df['Nuovo'] = df['Nuovo'].astype(bool)
+        return df
+    except Exception as e: 
+        st.error(f"Errore lettura CSV IBS: {e}")
+        return None
+
+# --- FUNZIONE HELPER: GENERATORE GRIGLIA AMAZON ---
+def mostra_griglia_libri(df_da_mostrare, limite_key, tab_id):
+    totale_libri = len(df_da_mostrare)
+    
+    if totale_libri == 0:
+        st.info("Nessun libro trovato in questa sezione con i filtri attuali.")
+        return
+
+    df_mostrato = df_da_mostrare.iloc[:st.session_state[limite_key]]
+    lista_libri = list(df_mostrato.iterrows())
+    
+    for i in range(0, len(lista_libri), 3):
+        cols = st.columns(3)
+        for j in range(3):
+            if i + j < len(lista_libri):
+                index, row = lista_libri[i + j]
+                asin = row.get('ASIN', '')
+                is_saved = asin in st.session_state.libri_salvati
+                
+                with cols[j]:
+                    with st.container(border=True):
+                        c_titolo, c_cuore = st.columns([5, 1])
+                        with c_cuore:
+                            # La chiave del pulsante usa tab_id per evitare duplicati
+                            st.button("❤️" if is_saved else "🤍", key=f"amz_{asin}_{tab_id}", on_click=toggle_salvataggio, args=(asin,), type="tertiary")
+                        with c_titolo:
+                            st.markdown(f"<div style='height: 55px; padding-top: 4px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; font-weight: bold; font-size: 1.05em; text-align: left;'>{row['Titolo']}</div>", unsafe_allow_html=True)
+                        
+                        url_img = row['Copertina']
+                        if pd.notna(url_img) and str(url_img).startswith('http'):
+                            st.markdown(f"<div style='height: 450px; display: flex; justify-content: center; align-items: center; margin-bottom: 15px;'><img src='{url_img}' style='width: 100%; height: 100%; object-fit: contain;'></div>", unsafe_allow_html=True)
+                        else:
+                            st.markdown(f"<div style='height: 450px; display: flex; justify-content: center; align-items: center; margin-bottom: 15px; background-color: #f8f9fa; border-radius: 5px;'>🖼️ <i>Nessuna Immagine</i></div>", unsafe_allow_html=True)
+                        
+                        c_info, c_note = st.columns([5, 1])
+                        with c_info:
+                            autore = str(row.get('Autore', 'N/D'))
+                            autore_corto = autore[:35] + "..." if len(autore) > 35 else autore
+                            st.markdown(f"""
+                            <div style='height: 80px; line-height: 1.4; text-align: left;'>
+                                <span style='font-size: 0.85em; color: gray;'>Di: <b>{autore_corto}</b></span><br>
+                                <span style='font-size: 0.9em;'>⭐⭐⭐⭐⭐ ({int(row['Recensioni'])})</span><br>
+                                <span style='font-size: 0.8em; color: gray;'>Reparto: {row.get('Categoria', 'N/D')}</span>
+                            </div>
+                            """, unsafe_allow_html=True)
+                        
+                        with c_note:
+                            if is_saved:
+                                st.markdown("<div style='padding-top: 10px;'></div>", unsafe_allow_html=True)
+                                nota_attuale = st.session_state.libri_salvati.get(asin, "").strip()
+                                icona_nota = "📒" if nota_attuale else "📝"
+                                with st.popover(icona_nota, help="Gestisci nota"):
+                                    nuova_nota = st.text_area("Appunti:", value=nota_attuale, key=f"txt_{asin}_{tab_id}", height=120)
+                                    if st.button("Salva", key=f"btn_nota_{asin}_{tab_id}", type="primary", use_container_width=True):
+                                        st.session_state.libri_salvati[asin] = nuova_nota
+                                        aggiorna_nota_db(asin, nuova_nota)
+                                        st.toast("✅ Nota salvata!")
+                                        st.rerun()
+
+                        st.link_button("Vedi su Amazon", f"https://www.amazon.it/dp/{asin}" if pd.notna(asin) else "#", type="primary", use_container_width=True)
+
+    if st.session_state[limite_key] < totale_libri:
+        st.markdown("---")
+        c1, c2, c3 = st.columns([1, 2, 1])
+        with c2:
+            if st.button("⬇️ Carica altri libri", use_container_width=True, key=f"btn_load_{tab_id}"):
+                st.session_state[limite_key] += 150
+                st.rerun()
+
+
+# ==========================================
+# SIDEBAR: NAVIGAZIONE PRINCIPALE
+# ==========================================
+st.sidebar.header("Strumenti")
+piattaforma = st.sidebar.radio("Scegli servizio:", ["🆕 Novità saggistica (30 giorni)", "🔍 Scouting Amazon"])
+st.sidebar.markdown("---")
+
+# ==========================================
+# SEZIONE 1: NOVITÀ SAGGISTICA (IBS)
+# ==========================================
+if piattaforma == "🆕 Novità saggistica (30 giorni)":
+    st.title("📚 Novità Saggistica")
+
+    file_name = "dati_per_app.csv"
+    df_ibs = load_ibs_data(file_name)
+
+    if df_ibs is None:
+        st.error(f"⚠️ File '{file_name}' non trovato! Attendi il primo aggiornamento automatico.")
+    else:
+        # --- NOTIFICA NUOVI ARRIVI ---
+        nuovi_libri = df_ibs[df_ibs['Nuovo'] == True]
+        num_nuovi = len(nuovi_libri)
+
+        if num_nuovi > 0:
+            st.success(f"🔔 **Aggiornamento:** Ci sono **{num_nuovi}** nuovi libri rispetto all'ultimo controllo!")
+            with st.expander(f"👀 Vedi la lista dei {num_nuovi} nuovi arrivi"):
+                for _, row in nuovi_libri.iterrows():
+                    st.markdown(f"🆕 **{row['Titolo']}** - {row['Autore']} ({row['Editore']})")
+
+        # --- SEPARAZIONE DATI ---
+        df_vip = df_ibs[df_ibs['Categoria_App'] == 'Editori Selezionati'].copy()
+        df_altri = df_ibs[df_ibs['Categoria_App'] != 'Editori Selezionati'].copy()
+
+        # --- SIDEBAR: FILTRI E ORDINAMENTO ---
+        solo_nuovi = st.sidebar.checkbox("🆕 Mostra solo le nuove uscite")
+        search_query = st.sidebar.text_input("🔍 Cerca libro o autore", help="Cerca in entrambe le liste")
+
+        st.sidebar.subheader("Filtra Selezionati")
+        editori_disponibili = sorted(df_vip['Editore'].unique())
+        sel_editore = st.sidebar.multiselect("Seleziona Editore", editori_disponibili)
+
+        st.sidebar.subheader("Ordina Selezionati")
+        sort_mode = st.sidebar.selectbox(
+            "Criterio di ordinamento:",
+            ["Titolo (A-Z)", "Titolo (Z-A)", "Editore (A-Z)", "Editore (Z-A)"]
+        )
+
+        # --- APPLICAZIONE FILTRI ---
+        if solo_nuovi:
+            df_vip = df_vip[df_vip['Nuovo'] == True]
+            df_altri = df_altri[df_altri['Nuovo'] == True]
+
+        if search_query:
+            if not df_vip.empty:
+                mask_vip = df_vip.astype(str).apply(lambda x: x.str.contains(search_query, case=False)).any(axis=1)
+                df_vip = df_vip[mask_vip]
+            if not df_altri.empty:
+                mask_altri = df_altri.astype(str).apply(lambda x: x.str.contains(search_query, case=False)).any(axis=1)
+                df_altri = df_altri[mask_altri]
+
+        if sel_editore:
+            df_vip = df_vip[df_vip['Editore'].isin(sel_editore)]
+
+        if not df_vip.empty:
+            if sort_mode == "Titolo (A-Z)":
+                df_vip = df_vip.sort_values(by='Titolo', ascending=True)
+            elif sort_mode == "Titolo (Z-A)":
+                df_vip = df_vip.sort_values(by='Titolo', ascending=False)
+            elif sort_mode == "Editore (A-Z)":
+                df_vip = df_vip.sort_values(by='Editore', ascending=True)
+            elif sort_mode == "Editore (Z-A)":
+                df_vip = df_vip.sort_values(by='Editore', ascending=False)
+
+        # --- INTERFACCIA A TAB ---
+        tab1, tab2 = st.tabs([f"⭐ Editori Selezionati ({len(df_vip)})", f"📂 Altri Editori ({len(df_altri)})"])
+
+        with tab1:
+            if df_vip.empty:
+                st.info("Nessun libro trovato con i filtri attuali.")
+            for _, row in df_vip.iterrows():
+                with st.container():
+                    c1, c2 = st.columns([1, 5])
+                    with c1:
+                        url = row['Copertina']
+                        if pd.notna(url) and str(url).startswith('http'):
+                            st.image(str(url), width=120)
+                        else:
+                            st.text("🖼️ No Img")
+                    with c2:
+                        badge = "🆕 " if row['Nuovo'] else ""
+                        st.subheader(f"{badge}{row['Titolo']}")
+                        st.markdown(f"**{row.get('Autore', 'N/D')}** | *{row.get('Editore', 'N/D')}* ({row.get('Anno', '')})")
+                        desc = str(row.get('Descrizione', ''))
+                        if len(desc) > 10 and desc.lower() != "nan":
+                            with st.expander("📖 Leggi sinossi"):
+                                st.write(desc)
+                        link = row.get('Link')
+                        if pd.notna(link) and str(link).startswith('http'):
+                            st.markdown(f"[➡️ Vedi su IBS]({link})")
+                    st.divider()
+
+        with tab2:
+            st.caption("Libri di altri editori (lista standard).")
+            if df_altri.empty:
+                st.info("Nessun libro in questa categoria.")
+            for _, row in df_altri.iterrows():
+                with st.container():
+                    c_img, c_info = st.columns([0.5, 5])
+                    with c_img:
+                        url = row['Copertina']
+                        if pd.notna(url) and str(url).startswith('http'):
+                            st.image(str(url), width=60)
+                    with c_info:
+                        badge = "🆕 " if row['Nuovo'] else ""
+                        st.markdown(f"{badge}**{row['Titolo']}**")
+                        st.markdown(f"{row.get('Autore', 'N/D')} - *{row.get('Editore', 'N/D')}*")
+                        link = row.get('Link')
+                        if pd.notna(link) and str(link).startswith('http'):
+                            st.markdown(f"[Link]({link})")
+                    st.markdown("---")
+
+# ==========================================
+# SEZIONE 2: SCOUTING AMAZON
+# ==========================================
+elif piattaforma == "🔍 Scouting Amazon":
+    st.title("I più recensiti - Amazon")
+    st.caption("Esplora i libri più popolari, salvali e aggiungi le tue note.")
+
+    # Mostra Wishlist Info
+    num_salvati = len(st.session_state.libri_salvati)
+    st.sidebar.metric(label="❤️ Appunti & Salvati", value=f"{num_salvati} libri")
+    
+    mostra_salvati_amz = st.sidebar.checkbox("Visualizza solo i Salvati")
+    
+    if num_salvati > 0:
+        with st.sidebar.popover("🗑️ Svuota Salvati", use_container_width=True):
+            st.markdown("⚠️ **Sei sicuro?**")
+            st.caption("Questa azione eliminerà tutti i libri salvati e i tuoi appunti in modo definitivo.")
+            if st.button("Sì, svuota tutto", type="primary", use_container_width=True):
+                svuota_salvati_db()
+                st.rerun()
+
+    st.sidebar.markdown("---")
+
+    # Inizializzazioni per la gestione dinamica dei limiti di pagina
+    if 'limite_libri_amz_top' not in st.session_state: st.session_state.limite_libri_amz_top = 150
+    if 'limite_libri_amz_pot' not in st.session_state: st.session_state.limite_libri_amz_pot = 150
+    if 'filtro_cat_amz' not in st.session_state: st.session_state.filtro_cat_amz = "Tutte"
+    if 'filtro_rec_amz' not in st.session_state: st.session_state.filtro_rec_amz = 35 # Modificato default per non nascondere il potenziale
+    if 'filtro_ord_amz' not in st.session_state: st.session_state.filtro_ord_amz = "Decrescente (Più recensioni)"
+    if 'filtro_salvati_amz' not in st.session_state: st.session_state.filtro_salvati_amz = False
+
+    df_amz = load_amazon_data("amazon_libri_multicat.csv")
+
+    if df_amz is None:
+        st.warning("⚠️ Dati Amazon non ancora disponibili. Attendi che lo scraper generi il file CSV.")
+    else:
+        st.sidebar.header("Filtri Amazon")
+        categorie_amz = ["Tutte"] + sorted(df_amz['Categoria'].unique().tolist())
+        sel_cat_amz = st.sidebar.selectbox("Reparto:", categorie_amz)
+        
+        max_recensioni = int(df_amz['Recensioni'].max()) if not df_amz.empty else 1000
+        min_rec_amz = st.sidebar.slider("Filtra per popolarità (min. recensioni):", 0, max_recensioni, value=35, step=10)
+        
+        ord_amz = st.sidebar.radio("Ordina per recensioni:", ["Decrescente (Più recensioni)", "Crescente (Meno recensioni)"])
+        is_ascending_amz = True if ord_amz == "Crescente (Meno recensioni)" else False
+
+        # Reset se cambiano i filtri
+        if (sel_cat_amz != st.session_state.filtro_cat_amz or min_rec_amz != st.session_state.filtro_rec_amz or 
+            ord_amz != st.session_state.filtro_ord_amz or mostra_salvati_amz != st.session_state.filtro_salvati_amz):
+            st.session_state.limite_libri_amz_top = 150
+            st.session_state.limite_libri_amz_pot = 150
+            st.session_state.filtro_cat_amz = sel_cat_amz
+            st.session_state.filtro_rec_amz = min_rec_amz
+            st.session_state.filtro_ord_amz = ord_amz
+            st.session_state.filtro_salvati_amz = mostra_salvati_amz
+
+        df_filtrato = df_amz.copy()
+        
+        if mostra_salvati_amz:
+            df_filtrato = df_filtrato[df_filtrato['ASIN'].isin(st.session_state.libri_salvati.keys())]
+        else:
+            if sel_cat_amz != "Tutte":
+                df_filtrato = df_filtrato[df_filtrato['Categoria'] == sel_cat_amz]
+            df_filtrato = df_filtrato[df_filtrato['Recensioni'] >= min_rec_amz]
+            
+        df_filtrato = df_filtrato.sort_values(by='Recensioni', ascending=is_ascending_amz)
+
+        # --- SEPARAZIONE DELLE DUE TAB ---
+        df_top = df_filtrato[df_filtrato['Recensioni'] >= 60]
+        df_potenziale = df_filtrato[df_filtrato['Recensioni'] < 60]
+
+        tab_top, tab_potenziale = st.tabs([f"🌟 Più recensioni ({len(df_top)})", f"🚀 Libri con potenziale ({len(df_potenziale)})"])
+
+        with tab_top:
+            mostra_griglia_libri(df_top, 'limite_libri_amz_top', 'top')
+
+        with tab_potenziale:
+            st.caption("Libri recenti con un numero di recensioni tra 35 e 59.")
+            mostra_griglia_libri(df_potenziale, 'limite_libri_amz_pot', 'pot')
