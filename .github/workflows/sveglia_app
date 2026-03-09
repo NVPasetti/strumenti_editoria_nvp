@@ -1,0 +1,18 @@
+name: Sveglia Streamlit App
+
+on:
+  schedule:
+    # 0 5 * * * significa: al minuto 0, dell'ora 5 (UTC).
+    # Corrisponde alle 06:00 del mattino in Italia (07:00 con l'ora legale estiva).
+    - cron: '0 5 * * *' 
+  workflow_dispatch: # Questo ti permette di cliccare "Run workflow" su GitHub se vuoi testarlo subito a mano
+
+jobs:
+  ping-app:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Invia una "visita" virtuale a Streamlit
+        run: |
+          curl -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" -sL "https://editoria-nvp.streamlit.app/" > /dev/null
+          echo "✅ App svegliata con successo alle 6:00 (ora italiana)!"
