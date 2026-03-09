@@ -12,8 +12,7 @@ from webdriver_manager.chrome import ChromeDriverManager
 from bs4 import BeautifulSoup
 
 # --- CONFIGURAZIONE ---
-NUM_PAGINE_PER_CATEGORIA = 300  # 300 pagine per ogni categoria
-MIN_RECENSIONI = 60             # Soglia minima recensioni
+NUM_PAGINE_PER_CATEGORIA = 100  # Abbassato a 100 per velocizzare
 OUTPUT_FILE = "amazon_libri_multicat.csv" # Nome del file di salvataggio
 
 # --- DEFINIZIONE CATEGORIE ---
@@ -47,12 +46,20 @@ CATEGORIES = [
         "name": "Scienze, tecnologia, medicina",
         "start": "https://www.amazon.it/s?i=stripbooks&rh=n%3A411663031%2Cn%3A508867031&s=popularity-rank&dc&ds=v1%3AwvIAIIaZwTaMGS2TzKeLz%2Bwgw07rYBJpZRyEJ1ecEWU&Adv-Srch-Books-Submit.x=30&Adv-Srch-Books-Submit.y=4&__mk_it_IT=%C3%85M%C3%85Z%C3%95%C3%91&page_nav_name=Libri+in+italiano&qid=1771968054&rnid=411663031&unfiltered=1&xpid=jPcvm0uprEBiA&ref=sr_nr_n_25",
         "template": "https://www.amazon.it/s?i=stripbooks&rh=n%3A411663031%2Cn%3A508867031&s=popularity-rank&dc&page={page}&Adv-Srch-Books-Submit.x=30&Adv-Srch-Books-Submit.y=4&__mk_it_IT=%C3%85M%C3%85Z%C3%95%C3%91&page_nav_name=Libri+in+italiano&qid=1771968084&rnid=411663031&unfiltered=1&xpid=jPcvm0uprEBiA&ref=sr_pg_{page}"
+    },
+    {
+        "name": "Religione e spiritualità",
+        "start": "https://www.amazon.it/s?i=stripbooks&rh=n%3A508745031%2Cp_72%3A4-&s=popularity-rank&content-id=amzn1.sym.424a711c-7818-425a-9fb0-9a3d8996ff54&pd_rd_r=60b24678-bded-444a-8ab9-ff9be86e31d1&pd_rd_w=3H327&pd_rd_wg=EQ3CV&pf_rd_p=424a711c-7818-425a-9fb0-9a3d8996ff54&pf_rd_r=J1YR6A7WTD9C22AZXRTC&ref=Oct_d_otopr_S",
+        "template": "https://www.amazon.it/s?i=stripbooks&rh=n%3A508745031%2Cp_72%3A490205031&s=popularity-rank&page={page}&xpid=rEfTnswARGJ_a&content-id=amzn1.sym.424a711c-7818-425a-9fb0-9a3d8996ff54&pd_rd_r=60b24678-bded-444a-8ab9-ff9be86e31d1&pd_rd_w=3H327&pd_rd_wg=EQ3CV&qid=1772982411&ref=sr_pg_{page}"
     }
 ]
 
 # --- FIX ENCODING ---
 if sys.stdout.encoding != 'utf-8':
-    sys.stdout.reconfigure(encoding='utf-8')
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except AttributeError:
+        pass
 
 def setup_driver():
     chrome_options = Options()
@@ -100,6 +107,28 @@ def extract_date(text):
     if match:
         return match.group(1)
     return ""
+
+def is_recente_dopo_luglio_2025(date_text):
+    """Funzione per controllare se la data è successiva a luglio 2025"""
+    if not date_text: return False
+    
+    mesi = {
+        'gen': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'mag': 5, 'giu': 6,
+        'lug': 7, 'ago': 8, 'set': 9, 'ott': 10, 'nov': 11, 'dic': 12
+    }
+    
+    match = re.search(r'(\d{1,2})\s+([a-z]{3})\.?\s+(\d{4})', date_text.lower())
+    if match:
+        month_str = match.group(2)
+        year = int(match.group(3))
+        month = mesi.get(month_str, 0)
+        
+        if year > 2025:
+            return True
+        if year == 2025 and month > 7:
+            return True
+            
+    return False
 
 def append_to_csv(data_list, filename):
     """Salva i dati della singola pagina accodandoli al CSV esistente."""
@@ -191,7 +220,15 @@ def get_amazon_data(driver, filename):
                         if review_span:
                             reviews_count = clean_reviews_count(review_span.get_text())
 
-                    if reviews_count < MIN_RECENSIONI: continue
+                    # --- NUOVA LOGICA RECENSIONI (DOPPIO BINARIO) ---
+                    if reviews_count >= 60:
+                        pass # Salva sempre se >= 60
+                    elif 35 <= reviews_count < 60:
+                        # Salva solo se uscito dopo luglio 2025
+                        if not is_recente_dopo_luglio_2025(date_found):
+                            continue
+                    else:
+                        continue # Scarta sempre se < 35
 
                     img_tag = card.find('img', class_='s-image')
                     img_url = img_tag['src'] if img_tag else ""
@@ -235,3 +272,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
