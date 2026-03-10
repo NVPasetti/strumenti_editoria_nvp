@@ -40,7 +40,7 @@ if libri_scaduti:
     print(f"Trovati {len(libri_scaduti)} libri da notificare. Preparazione email...")
     
     msg = MIMEMultipart("alternative")
-    msg["Subject"] = f"🔔 Radar Editoriale: {len(libri_scaduti)} libri da verificare!"
+    msg["Subject"] = f"🔔 Novità saggistica: {len(libri_scaduti)} libri da verificare!"
     msg["From"] = EMAIL_MITTENTE
     msg["To"] = EMAIL_DESTINATARIO
 
@@ -51,7 +51,7 @@ if libri_scaduti:
     <ul>
     """
     for libro in libri_scaduti:
-        html_body += f"<li><b>{libro['titolo']}</b> - <a href='{libro['id']}'>Vedi su IBS</a></li>"
+        html_body += f"<li><b>{libro['titolo']}</b> - <a href='{libro['id']}'></a></li>"
     
     html_body += "</ul><p><i>Buon lavoro di scouting!</i></p>"
 
