@@ -51,7 +51,7 @@ if libri_scaduti:
     <ul>
     """
     for libro in libri_scaduti:
-        html_body += f"<li><b>{libro['titolo']}</b> - <a href='{libro['id']}'></a></li>"
+        html_body += f"<li><b>{libro['titolo']}</b></li>"
     
     html_body += "</ul><p><i>Buon lavoro di scouting!</i></p>"
 
