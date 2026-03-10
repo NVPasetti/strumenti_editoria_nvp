@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import os
+import datetime
 from supabase import create_client, Client
 
 # --- CONFIGURAZIONE PAGINA ---
@@ -19,7 +20,7 @@ except Exception as e:
     st.error(f"Errore di connessione a Supabase: {e}")
     supabase = None
 
-# --- FUNZIONI DATABASE (Solo per Amazon) ---
+# --- FUNZIONI DATABASE AMAZON (WISHLIST) ---
 def carica_preferiti_db():
     if supabase:
         try:
@@ -38,36 +39,64 @@ def salva_preferito_db(item_id):
         try:
             supabase.table("wishlist").insert({"asin": item_id, "nota": ""}).execute()
         except Exception:
-            try:
-                supabase.table("wishlist").insert({"asin": item_id}).execute()
-            except Exception as e:
-                st.toast(f"⚠️ Errore salvataggio nel DB: {e}")
+            pass
 
 def aggiorna_nota_db(item_id, nota_testo):
     if supabase:
         try:
             supabase.table("wishlist").update({"nota": nota_testo}).eq("asin", item_id).execute()
-        except Exception as e:
-            st.toast("⚠️ Errore aggiornamento nota DB")
+        except Exception:
+            pass
 
 def rimuovi_preferito_db(item_id):
     if supabase:
         try:
             supabase.table("wishlist").delete().eq("asin", item_id).execute()
-        except Exception as e:
-            st.toast(f"⚠️ Errore rimozione dal DB: {e}")
+        except Exception:
+            pass
 
 def svuota_salvati_db():
     st.session_state.libri_salvati.clear()
     if supabase:
         try:
             supabase.table("wishlist").delete().neq("asin", "dummy_value").execute()
+        except Exception:
+            pass
+
+# --- FUNZIONI DATABASE IBS (REMINDERS 30 GIORNI) ---
+def carica_reminders_db():
+    if supabase:
+        try:
+            risposta = supabase.table("reminders").select("*").execute()
+            return {r["id"]: {"titolo": r["titolo"], "data_scadenza": r["data_scadenza"]} for r in risposta.data}
+        except Exception:
+            return {}
+    return {}
+
+def aggiungi_reminder_db(id_link, titolo, data_scadenza):
+    if supabase:
+        try:
+            supabase.table("reminders").insert({
+                "id": id_link, 
+                "titolo": titolo, 
+                "data_scadenza": data_scadenza
+            }).execute()
         except Exception as e:
-            st.error(f"Errore nello svuotamento: {e}")
+            st.toast("⚠️ Assicurati di aver creato la tabella 'reminders' su Supabase!")
+
+def rimuovi_reminder_db(id_link):
+    if supabase:
+        try:
+            supabase.table("reminders").delete().eq("id", id_link).execute()
+        except Exception:
+            pass
 
 # --- INIZIALIZZAZIONE MEMORIA GLOBALE ---
 if 'libri_salvati' not in st.session_state:
     st.session_state.libri_salvati = carica_preferiti_db()
+
+if 'reminders' not in st.session_state:
+    st.session_state.reminders = carica_reminders_db()
 
 def toggle_salvataggio(item_id):
     if item_id in st.session_state.libri_salvati:
@@ -102,14 +131,11 @@ def load_ibs_data(file_name):
         else:
             df['Nuovo'] = df['Nuovo'].astype(bool)
         return df
-    except Exception as e: 
-        st.error(f"Errore lettura CSV IBS: {e}")
-        return None
+    except Exception: return None
 
 # --- FUNZIONE HELPER: GENERATORE GRIGLIA AMAZON ---
 def mostra_griglia_libri(df_da_mostrare, limite_key, tab_id):
     totale_libri = len(df_da_mostrare)
-    
     if totale_libri == 0:
         st.info("Nessun libro trovato in questa sezione con i filtri attuali.")
         return
@@ -129,7 +155,6 @@ def mostra_griglia_libri(df_da_mostrare, limite_key, tab_id):
                     with st.container(border=True):
                         c_titolo, c_cuore = st.columns([5, 1])
                         with c_cuore:
-                            # La chiave del pulsante usa tab_id per evitare duplicati
                             st.button("❤️" if is_saved else "🤍", key=f"amz_{asin}_{tab_id}", on_click=toggle_salvataggio, args=(asin,), type="tertiary")
                         with c_titolo:
                             st.markdown(f"<div style='height: 55px; padding-top: 4px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; font-weight: bold; font-size: 1.05em; text-align: left;'>{row['Titolo']}</div>", unsafe_allow_html=True)
@@ -175,7 +200,6 @@ def mostra_griglia_libri(df_da_mostrare, limite_key, tab_id):
                 st.session_state[limite_key] += 150
                 st.rerun()
 
-
 # ==========================================
 # SIDEBAR: NAVIGAZIONE PRINCIPALE
 # ==========================================
@@ -188,6 +212,40 @@ st.sidebar.markdown("---")
 # ==========================================
 if piattaforma == "🆕 Novità saggistica (30 giorni)":
     st.title("📚 Novità Saggistica")
+    
+    # --- WIDGET LATERALE: GESTIONE PROMEMORIA ---
+    st.sidebar.subheader("⏰ Libri in Monitoraggio")
+    if len(st.session_state.reminders) == 0:
+        st.sidebar.caption("Nessun libro in monitoraggio.")
+    else:
+        oggi = datetime.date.today()
+        # Ordina dal più vicino alla scadenza al più lontano
+        sorted_rems = sorted(st.session_state.reminders.items(), key=lambda x: x[1]['data_scadenza'])
+        
+        for r_id, r_data in sorted_rems:
+            try:
+                scadenza = datetime.date.fromisoformat(r_data["data_scadenza"])
+                giorni_rimasti = (scadenza - oggi).days
+            except:
+                giorni_rimasti = 99
+                scadenza = oggi
+                
+            if giorni_rimasti <= 0:
+                status = "🔴 Da verificare!"
+            elif giorni_rimasti <= 7:
+                status = f"🟠 {giorni_rimasti} gg rimasti"
+            else:
+                status = f"🟢 {giorni_rimasti} gg rimasti"
+                
+            with st.sidebar.expander(f"{status} | {r_data['titolo'][:15]}..."):
+                st.markdown(f"**{r_data['titolo']}**")
+                st.caption(f"Scadenza: {scadenza.strftime('%d/%m/%Y')}")
+                st.link_button("➡️ Vedi su IBS", r_id, use_container_width=True)
+                # Uso hash per generare chiavi univoche valide
+                if st.button("🗑️ Rimuovi", key=f"del_rem_{hash(r_id)}", use_container_width=True):
+                    del st.session_state.reminders[r_id]
+                    rimuovi_reminder_db(r_id)
+                    st.rerun()
 
     file_name = "dati_per_app.csv"
     df_ibs = load_ibs_data(file_name)
@@ -255,7 +313,7 @@ if piattaforma == "🆕 Novità saggistica (30 giorni)":
         with tab1:
             if df_vip.empty:
                 st.info("Nessun libro trovato con i filtri attuali.")
-            for _, row in df_vip.iterrows():
+            for index, row in df_vip.iterrows():
                 with st.container():
                     c1, c2 = st.columns([1, 5])
                     with c1:
@@ -265,14 +323,34 @@ if piattaforma == "🆕 Novità saggistica (30 giorni)":
                         else:
                             st.text("🖼️ No Img")
                     with c2:
-                        badge = "🆕 " if row['Nuovo'] else ""
-                        st.subheader(f"{badge}{row['Titolo']}")
+                        c2_testo, c2_btn = st.columns([4, 1])
+                        with c2_testo:
+                            badge = "🆕 " if row['Nuovo'] else ""
+                            st.subheader(f"{badge}{row['Titolo']}")
+                        
+                        with c2_btn:
+                            link = row.get('Link')
+                            is_reminded = link in st.session_state.reminders
+                            
+                            # Bottone Toggle per il monitoraggio 30gg
+                            btn_label = "✅ Seguito" if is_reminded else "🕒 Monitora"
+                            btn_type = "primary" if is_reminded else "secondary"
+                            
+                            if st.button(btn_label, key=f"rem_vip_{index}", use_container_width=True, help="Ricordami di controllare le vendite tra 30 giorni"):
+                                if is_reminded:
+                                    del st.session_state.reminders[link]
+                                    rimuovi_reminder_db(link)
+                                else:
+                                    scadenza = (datetime.date.today() + datetime.timedelta(days=30)).isoformat()
+                                    st.session_state.reminders[link] = {"titolo": row['Titolo'], "data_scadenza": scadenza}
+                                    aggiungi_reminder_db(link, row['Titolo'], scadenza)
+                                st.rerun()
+
                         st.markdown(f"**{row.get('Autore', 'N/D')}** | *{row.get('Editore', 'N/D')}* ({row.get('Anno', '')})")
                         desc = str(row.get('Descrizione', ''))
                         if len(desc) > 10 and desc.lower() != "nan":
                             with st.expander("📖 Leggi sinossi"):
                                 st.write(desc)
-                        link = row.get('Link')
                         if pd.notna(link) and str(link).startswith('http'):
                             st.markdown(f"[➡️ Vedi su IBS]({link})")
                     st.divider()
@@ -281,9 +359,9 @@ if piattaforma == "🆕 Novità saggistica (30 giorni)":
             st.caption("Libri di altri editori (lista standard).")
             if df_altri.empty:
                 st.info("Nessun libro in questa categoria.")
-            for _, row in df_altri.iterrows():
+            for index, row in df_altri.iterrows():
                 with st.container():
-                    c_img, c_info = st.columns([0.5, 5])
+                    c_img, c_info, c_btn2 = st.columns([0.5, 4, 1])
                     with c_img:
                         url = row['Copertina']
                         if pd.notna(url) and str(url).startswith('http'):
@@ -295,6 +373,20 @@ if piattaforma == "🆕 Novità saggistica (30 giorni)":
                         link = row.get('Link')
                         if pd.notna(link) and str(link).startswith('http'):
                             st.markdown(f"[Link]({link})")
+                    
+                    with c_btn2:
+                        is_reminded2 = link in st.session_state.reminders
+                        btn_label2 = "✅ Seguito" if is_reminded2 else "🕒 Monitora"
+                        btn_type2 = "primary" if is_reminded2 else "secondary"
+                        if st.button(btn_label2, key=f"rem_altri_{index}", use_container_width=True):
+                            if is_reminded2:
+                                del st.session_state.reminders[link]
+                                rimuovi_reminder_db(link)
+                            else:
+                                scadenza = (datetime.date.today() + datetime.timedelta(days=30)).isoformat()
+                                st.session_state.reminders[link] = {"titolo": row['Titolo'], "data_scadenza": scadenza}
+                                aggiungi_reminder_db(link, row['Titolo'], scadenza)
+                            st.rerun()
                     st.markdown("---")
 
 # ==========================================
@@ -304,7 +396,6 @@ elif piattaforma == "🔍 Scouting Amazon":
     st.title("I più recensiti - Amazon")
     st.caption("Esplora i libri più popolari, salvali e aggiungi le tue note.")
 
-    # Mostra Wishlist Info
     num_salvati = len(st.session_state.libri_salvati)
     st.sidebar.metric(label="❤️ Appunti & Salvati", value=f"{num_salvati} libri")
     
@@ -320,11 +411,10 @@ elif piattaforma == "🔍 Scouting Amazon":
 
     st.sidebar.markdown("---")
 
-    # Inizializzazioni per la gestione dinamica dei limiti di pagina
     if 'limite_libri_amz_top' not in st.session_state: st.session_state.limite_libri_amz_top = 150
     if 'limite_libri_amz_pot' not in st.session_state: st.session_state.limite_libri_amz_pot = 150
     if 'filtro_cat_amz' not in st.session_state: st.session_state.filtro_cat_amz = "Tutte"
-    if 'filtro_rec_amz' not in st.session_state: st.session_state.filtro_rec_amz = 35 # Modificato default per non nascondere il potenziale
+    if 'filtro_rec_amz' not in st.session_state: st.session_state.filtro_rec_amz = 35 
     if 'filtro_ord_amz' not in st.session_state: st.session_state.filtro_ord_amz = "Decrescente (Più recensioni)"
     if 'filtro_salvati_amz' not in st.session_state: st.session_state.filtro_salvati_amz = False
 
@@ -343,7 +433,6 @@ elif piattaforma == "🔍 Scouting Amazon":
         ord_amz = st.sidebar.radio("Ordina per recensioni:", ["Decrescente (Più recensioni)", "Crescente (Meno recensioni)"])
         is_ascending_amz = True if ord_amz == "Crescente (Meno recensioni)" else False
 
-        # Reset se cambiano i filtri
         if (sel_cat_amz != st.session_state.filtro_cat_amz or min_rec_amz != st.session_state.filtro_rec_amz or 
             ord_amz != st.session_state.filtro_ord_amz or mostra_salvati_amz != st.session_state.filtro_salvati_amz):
             st.session_state.limite_libri_amz_top = 150
@@ -364,7 +453,6 @@ elif piattaforma == "🔍 Scouting Amazon":
             
         df_filtrato = df_filtrato.sort_values(by='Recensioni', ascending=is_ascending_amz)
 
-        # --- SEPARAZIONE DELLE DUE TAB ---
         df_top = df_filtrato[df_filtrato['Recensioni'] >= 60]
         df_potenziale = df_filtrato[df_filtrato['Recensioni'] < 60]
 
