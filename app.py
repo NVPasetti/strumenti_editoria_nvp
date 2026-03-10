@@ -214,7 +214,7 @@ if piattaforma == "🆕 Novità saggistica (30 giorni)":
     st.title("📚 Novità Saggistica")
     
     # --- WIDGET LATERALE: GESTIONE PROMEMORIA ---
-    st.sidebar.subheader("⏰ Libri in Monitoraggio")
+    st.sidebar.subheader("⏰ Libri in monitoraggio")
     if len(st.session_state.reminders) == 0:
         st.sidebar.caption("Nessun libro in monitoraggio.")
     else:
@@ -333,7 +333,7 @@ if piattaforma == "🆕 Novità saggistica (30 giorni)":
                             is_reminded = link in st.session_state.reminders
                             
                             # Bottone Toggle per il monitoraggio 30gg
-                            btn_label = "✅ Seguito" if is_reminded else "🕒 Monitora"
+                            btn_label = "✅ Seguito" if is_reminded else "🕒"
                             btn_type = "primary" if is_reminded else "secondary"
                             
                             if st.button(btn_label, key=f"rem_vip_{index}", use_container_width=True, help="Ricordami di controllare le vendite tra 30 giorni"):
