@@ -1,0 +1,31 @@
+name: Controllo Scadenze Libri
+
+on:
+  schedule:
+    - cron: '0 6 * * *' # Alle 06:00 UTC (07:00 in Italia)
+  workflow_dispatch: # Per poterlo testare a mano con un click
+
+jobs:
+  check-and-email:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout del codice
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+
+      - name: Installa librerie
+        run: pip install supabase
+
+      - name: Esegui controllo scadenze
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          EMAIL_MITTENTE: ${{ secrets.EMAIL_MITTENTE }}
+          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+          EMAIL_DESTINATARIO: ${{ secrets.EMAIL_DESTINATARIO }}
+        run: python check_reminders.py
