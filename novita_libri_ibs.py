@@ -6,6 +6,7 @@ import random
 import requests
 import io
 import os  # Fondamentale per controllare se il file esiste
+from datetime import datetime
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
@@ -175,7 +176,6 @@ def parse_list_page(driver, url):
         return []
 
 def save_excel_with_images(df, filename):
-    # FILTRO: Salviamo in Excel (che è pesante) SOLO i libri principali
     df_excel = df[df['Categoria_App'] == 'Editori Selezionati'].copy()
     
     print(f"\n--- Generazione Excel ({len(df_excel)} libri selezionati) ---")
@@ -188,7 +188,7 @@ def save_excel_with_images(df, filename):
         worksheet.set_column('C:E', 15)
         worksheet.set_column('F:F', 50)
         wrap_format = workbook.add_format({'text_wrap': True, 'valign': 'top'})
-        worksheet.set_column('B:G', None, wrap_format)
+        worksheet.set_column('B:H', None, wrap_format)
 
         for idx, row in df_excel.iterrows():
             img_url = row['Copertina']
@@ -205,18 +205,26 @@ def save_excel_with_images(df, filename):
 def main():
     print("=== START SCRAPER (HEADLESS MODE + NEW ARRIVALS) ===")
     
-    # 1. CARICAMENTO VECCHI DATI (Per confronto)
-    old_ids = set()
+    # 1. CARICAMENTO VECCHI DATI E DATE STORICHE
+    old_data = {} # Dizionario per conservare la Data_Aggiunta storica
     csv_filename = "dati_per_app.csv"
+    oggi_str = datetime.now().date().isoformat() # Es: '2026-03-11'
     
     if os.path.exists(csv_filename):
         try:
             df_old = pd.read_csv(csv_filename)
-            # Creiamo un ID univoco anche per i vecchi dati per confrontarli
             if 'Titolo' in df_old.columns and 'Autore' in df_old.columns:
                 df_old['temp_id'] = (df_old['Titolo'].fillna('') + df_old['Autore'].fillna('')).str.lower().str.strip()
-                old_ids = set(df_old['temp_id'].unique())
-            print(f"📚 Trovati {len(old_ids)} libri già presenti nel database.")
+                
+                # Assicuriamoci che la colonna Data_Aggiunta esista (serve per le esecuzioni future)
+                if 'Data_Aggiunta' not in df_old.columns:
+                    df_old['Data_Aggiunta'] = oggi_str
+                
+                # Salviamo la data storica per ogni id
+                for _, row in df_old.iterrows():
+                    old_data[row['temp_id']] = row['Data_Aggiunta']
+                    
+            print(f"📚 Trovati {len(old_data)} libri già presenti nel database (con date storiche).")
         except Exception as e:
             print(f"⚠️ Impossibile leggere il vecchio CSV: {e}")
 
@@ -235,11 +243,16 @@ def main():
                 
                 new_books = 0
                 for b in found:
-                    if b['id_univoco'] not in all_books_dict:
-                        # ### LOGICA NUOVI ARRIVI ###
-                        b['Nuovo'] = b['id_univoco'] not in old_ids
+                    uid = b['id_univoco']
+                    if uid not in all_books_dict:
+                        # Logica Data e "Nuovo"
+                        is_new = uid not in old_data
+                        b['Nuovo'] = is_new
                         
-                        all_books_dict[b['id_univoco']] = b
+                        # Se è nuovo, la Data_Aggiunta è oggi. Altrimenti recupera quella vecchia.
+                        b['Data_Aggiunta'] = oggi_str if is_new else old_data[uid]
+                        
+                        all_books_dict[uid] = b
                         new_books += 1
                 
                 print(f"   -> {new_books} libri trovati nella pagina.")
@@ -264,12 +277,10 @@ def main():
     df = pd.DataFrame(list(all_books_dict.values()))
     if not df.empty:
         df_final = df.drop(columns=['id_univoco', 'Da_Scaricare'])
-        # Assicuriamoci che la colonna 'Nuovo' sia inclusa e sia boolean
-        cols = ['Categoria_App', 'Copertina', 'Titolo', 'Autore', 'Editore', 'Anno', 'Descrizione', 'Link', 'Nuovo']
+        cols = ['Categoria_App', 'Copertina', 'Titolo', 'Autore', 'Editore', 'Anno', 'Descrizione', 'Link', 'Nuovo', 'Data_Aggiunta']
         existing_cols = [c for c in cols if c in df_final.columns]
         df_final = df_final[existing_cols]
         
-        # Salvataggio
         df_final.to_csv(csv_filename, index=False)
         print(f"\n\n✅ CSV AGGIORNATO: {csv_filename}")
         
