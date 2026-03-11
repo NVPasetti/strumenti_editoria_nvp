@@ -68,11 +68,19 @@ def carica_reminders_db():
     if supabase:
         try:
             risposta = supabase.table("reminders").select("*").execute()
-            return {r["id"]: {
-                "titolo": r["titolo"], 
-                "autore": r.get("autore", "N/D"), # Recupera l'autore (o mette N/D per i vecchi salvataggi)
-                "data_scadenza": r["data_scadenza"]
-            } for r in risposta.data}
+            reminders_dict = {}
+            for r in risposta.data:
+                # Controllo rigoroso se l'autore è NULL (None) nel database
+                autore_db = r.get("autore")
+                if not autore_db or str(autore_db).strip().lower() == "none":
+                    autore_db = "N/D"
+                
+                reminders_dict[r["id"]] = {
+                    "titolo": r["titolo"], 
+                    "autore": autore_db, 
+                    "data_scadenza": r["data_scadenza"]
+                }
+            return reminders_dict
         except Exception:
             return {}
     return {}
@@ -252,7 +260,7 @@ if piattaforma == "🆕 Novità saggistica (30 giorni)":
             ["Titolo (A-Z)", "Titolo (Z-A)", "Editore (A-Z)", "Editore (Z-A)"]
         )
 
-        # --- WIDGET LATERALE: GESTIONE PROMEMORIA (ORA IN FONDO) ---
+        # --- WIDGET LATERALE: GESTIONE PROMEMORIA ---
         st.sidebar.markdown("---")
         num_reminders = len(st.session_state.reminders)
         
@@ -278,17 +286,13 @@ if piattaforma == "🆕 Novità saggistica (30 giorni)":
                     else:
                         status = f"🟢 -{giorni_rimasti} gg"
                         
-                    st.markdown(f"**{r_data['titolo']}**<br><span style='font-size:0.85em; color:gray;'>di {r_data.get('autore', 'N/D')}</span>", unsafe_allow_html=True)
-                    st.caption(f"{status} (Scad: {scadenza.strftime('%d/%m/%Y')})")
+                    st.markdown(f"**{r_data['titolo']}**<br><span style='font-size:0.85em; color:gray;'>di {r_data['autore']}</span>", unsafe_allow_html=True)
+                    st.caption(f"{status} (Scadenza: {scadenza.strftime('%d/%m/%Y')})")
                     
-                    c1, c2 = st.columns([3, 1])
-                    with c1:
-                        st.link_button("Link IBS", r_id, use_container_width=True)
-                    with c2:
-                        if st.button("🗑️", key=f"del_rem_{hash(r_id)}", use_container_width=True):
-                            del st.session_state.reminders[r_id]
-                            rimuovi_reminder_db(r_id)
-                            st.rerun()
+                    if st.button("🗑️ Rimuovi", key=f"del_rem_{hash(r_id)}", use_container_width=True):
+                        del st.session_state.reminders[r_id]
+                        rimuovi_reminder_db(r_id)
+                        st.rerun()
                     st.markdown("---")
 
         # --- APPLICAZIONE FILTRI ---
