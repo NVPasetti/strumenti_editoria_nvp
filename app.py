@@ -68,21 +68,26 @@ def carica_reminders_db():
     if supabase:
         try:
             risposta = supabase.table("reminders").select("*").execute()
-            return {r["id"]: {"titolo": r["titolo"], "data_scadenza": r["data_scadenza"]} for r in risposta.data}
+            return {r["id"]: {
+                "titolo": r["titolo"], 
+                "autore": r.get("autore", "N/D"), # Recupera l'autore (o mette N/D per i vecchi salvataggi)
+                "data_scadenza": r["data_scadenza"]
+            } for r in risposta.data}
         except Exception:
             return {}
     return {}
 
-def aggiungi_reminder_db(id_link, titolo, data_scadenza):
+def aggiungi_reminder_db(id_link, titolo, autore, data_scadenza):
     if supabase:
         try:
             supabase.table("reminders").insert({
                 "id": id_link, 
                 "titolo": titolo, 
+                "autore": autore,
                 "data_scadenza": data_scadenza
             }).execute()
         except Exception as e:
-            st.toast("⚠️ Assicurati di aver creato la tabella 'reminders' su Supabase!")
+            st.toast("⚠️ Assicurati di aver aggiornato la tabella 'reminders' su Supabase!")
 
 def rimuovi_reminder_db(id_link):
     if supabase:
@@ -212,40 +217,6 @@ st.sidebar.markdown("---")
 # ==========================================
 if piattaforma == "🆕 Novità saggistica (30 giorni)":
     st.title("📚 Novità Saggistica")
-    
-    # --- WIDGET LATERALE: GESTIONE PROMEMORIA ---
-    st.sidebar.subheader("⏰ Libri in monitoraggio")
-    if len(st.session_state.reminders) == 0:
-        st.sidebar.caption("Nessun libro in monitoraggio.")
-    else:
-        oggi = datetime.date.today()
-        # Ordina dal più vicino alla scadenza al più lontano
-        sorted_rems = sorted(st.session_state.reminders.items(), key=lambda x: x[1]['data_scadenza'])
-        
-        for r_id, r_data in sorted_rems:
-            try:
-                scadenza = datetime.date.fromisoformat(r_data["data_scadenza"])
-                giorni_rimasti = (scadenza - oggi).days
-            except:
-                giorni_rimasti = 99
-                scadenza = oggi
-                
-            if giorni_rimasti <= 0:
-                status = "🔴 Da verificare!"
-            elif giorni_rimasti <= 7:
-                status = f"🟠 {giorni_rimasti} gg rimasti"
-            else:
-                status = f"🟢 {giorni_rimasti} gg rimasti"
-                
-            with st.sidebar.expander(f"{status} | {r_data['titolo'][:15]}..."):
-                st.markdown(f"**{r_data['titolo']}**")
-                st.caption(f"Scadenza: {scadenza.strftime('%d/%m/%Y')}")
-                st.link_button("➡️ Vedi su IBS", r_id, use_container_width=True)
-                # Uso hash per generare chiavi univoche valide
-                if st.button("🗑️ Rimuovi", key=f"del_rem_{hash(r_id)}", use_container_width=True):
-                    del st.session_state.reminders[r_id]
-                    rimuovi_reminder_db(r_id)
-                    st.rerun()
 
     file_name = "dati_per_app.csv"
     df_ibs = load_ibs_data(file_name)
@@ -280,6 +251,45 @@ if piattaforma == "🆕 Novità saggistica (30 giorni)":
             "Criterio di ordinamento:",
             ["Titolo (A-Z)", "Titolo (Z-A)", "Editore (A-Z)", "Editore (Z-A)"]
         )
+
+        # --- WIDGET LATERALE: GESTIONE PROMEMORIA (ORA IN FONDO) ---
+        st.sidebar.markdown("---")
+        num_reminders = len(st.session_state.reminders)
+        
+        with st.sidebar.expander(f"⏰ Libri in monitoraggio ({num_reminders})"):
+            if num_reminders == 0:
+                st.caption("Nessun libro in monitoraggio.")
+            else:
+                oggi = datetime.date.today()
+                sorted_rems = sorted(st.session_state.reminders.items(), key=lambda x: x[1]['data_scadenza'])
+                
+                for r_id, r_data in sorted_rems:
+                    try:
+                        scadenza = datetime.date.fromisoformat(r_data["data_scadenza"])
+                        giorni_rimasti = (scadenza - oggi).days
+                    except:
+                        giorni_rimasti = 99
+                        scadenza = oggi
+                        
+                    if giorni_rimasti <= 0:
+                        status = "🔴 Scaduto!"
+                    elif giorni_rimasti <= 7:
+                        status = f"🟠 -{giorni_rimasti} gg"
+                    else:
+                        status = f"🟢 -{giorni_rimasti} gg"
+                        
+                    st.markdown(f"**{r_data['titolo']}**<br><span style='font-size:0.85em; color:gray;'>di {r_data.get('autore', 'N/D')}</span>", unsafe_allow_html=True)
+                    st.caption(f"{status} (Scad: {scadenza.strftime('%d/%m/%Y')})")
+                    
+                    c1, c2 = st.columns([3, 1])
+                    with c1:
+                        st.link_button("Link IBS", r_id, use_container_width=True)
+                    with c2:
+                        if st.button("🗑️", key=f"del_rem_{hash(r_id)}", use_container_width=True):
+                            del st.session_state.reminders[r_id]
+                            rimuovi_reminder_db(r_id)
+                            st.rerun()
+                    st.markdown("---")
 
         # --- APPLICAZIONE FILTRI ---
         if solo_nuovi:
@@ -330,10 +340,10 @@ if piattaforma == "🆕 Novità saggistica (30 giorni)":
                         
                         with c2_btn:
                             link = row.get('Link')
+                            autore_libro = str(row.get('Autore', 'N/D'))
                             is_reminded = link in st.session_state.reminders
                             
-                            # Bottone Toggle per il monitoraggio 30gg
-                            btn_label = "✅ Seguito" if is_reminded else "🕒"
+                            btn_label = "✅ Seguito" if is_reminded else "🕒 Monitora"
                             btn_type = "primary" if is_reminded else "secondary"
                             
                             if st.button(btn_label, key=f"rem_vip_{index}", use_container_width=True, help="Ricordami di controllare le vendite tra 30 giorni"):
@@ -341,12 +351,24 @@ if piattaforma == "🆕 Novità saggistica (30 giorni)":
                                     del st.session_state.reminders[link]
                                     rimuovi_reminder_db(link)
                                 else:
-                                    scadenza = (datetime.date.today() + datetime.timedelta(days=30)).isoformat()
-                                    st.session_state.reminders[link] = {"titolo": row['Titolo'], "data_scadenza": scadenza}
-                                    aggiungi_reminder_db(link, row['Titolo'], scadenza)
+                                    if 'Data_Aggiunta' in row and pd.notna(row['Data_Aggiunta']):
+                                        try:
+                                            data_base = datetime.date.fromisoformat(str(row['Data_Aggiunta']))
+                                        except:
+                                            data_base = datetime.date.today()
+                                    else:
+                                        data_base = datetime.date.today()
+                                        
+                                    scadenza = (data_base + datetime.timedelta(days=30)).isoformat()
+                                    st.session_state.reminders[link] = {
+                                        "titolo": row['Titolo'], 
+                                        "autore": autore_libro,
+                                        "data_scadenza": scadenza
+                                    }
+                                    aggiungi_reminder_db(link, row['Titolo'], autore_libro, scadenza)
                                 st.rerun()
 
-                        st.markdown(f"**{row.get('Autore', 'N/D')}** | *{row.get('Editore', 'N/D')}* ({row.get('Anno', '')})")
+                        st.markdown(f"**{autore_libro}** | *{row.get('Editore', 'N/D')}* ({row.get('Anno', '')})")
                         desc = str(row.get('Descrizione', ''))
                         if len(desc) > 10 and desc.lower() != "nan":
                             with st.expander("📖 Leggi sinossi"):
@@ -368,8 +390,9 @@ if piattaforma == "🆕 Novità saggistica (30 giorni)":
                             st.image(str(url), width=60)
                     with c_info:
                         badge = "🆕 " if row['Nuovo'] else ""
+                        autore_libro = str(row.get('Autore', 'N/D'))
                         st.markdown(f"{badge}**{row['Titolo']}**")
-                        st.markdown(f"{row.get('Autore', 'N/D')} - *{row.get('Editore', 'N/D')}*")
+                        st.markdown(f"{autore_libro} - *{row.get('Editore', 'N/D')}*")
                         link = row.get('Link')
                         if pd.notna(link) and str(link).startswith('http'):
                             st.markdown(f"[Link]({link})")
@@ -383,9 +406,21 @@ if piattaforma == "🆕 Novità saggistica (30 giorni)":
                                 del st.session_state.reminders[link]
                                 rimuovi_reminder_db(link)
                             else:
-                                scadenza = (datetime.date.today() + datetime.timedelta(days=30)).isoformat()
-                                st.session_state.reminders[link] = {"titolo": row['Titolo'], "data_scadenza": scadenza}
-                                aggiungi_reminder_db(link, row['Titolo'], scadenza)
+                                if 'Data_Aggiunta' in row and pd.notna(row['Data_Aggiunta']):
+                                    try:
+                                        data_base = datetime.date.fromisoformat(str(row['Data_Aggiunta']))
+                                    except:
+                                        data_base = datetime.date.today()
+                                else:
+                                    data_base = datetime.date.today()
+                                    
+                                scadenza = (data_base + datetime.timedelta(days=30)).isoformat()
+                                st.session_state.reminders[link] = {
+                                    "titolo": row['Titolo'], 
+                                    "autore": autore_libro,
+                                    "data_scadenza": scadenza
+                                }
+                                aggiungi_reminder_db(link, row['Titolo'], autore_libro, scadenza)
                             st.rerun()
                     st.markdown("---")
 
