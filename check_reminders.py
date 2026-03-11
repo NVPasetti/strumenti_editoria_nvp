@@ -40,18 +40,28 @@ if libri_scaduti:
     print(f"Trovati {len(libri_scaduti)} libri da notificare. Preparazione email...")
     
     msg = MIMEMultipart("alternative")
-    msg["Subject"] = f"🔔 Novità saggistica: {len(libri_scaduti)} libri da verificare!"
+    msg["Subject"] = f"🔔 Radar Editoriale: {len(libri_scaduti)} libri da verificare!"
     msg["From"] = EMAIL_MITTENTE
     msg["To"] = EMAIL_DESTINATARIO
 
     # Corpo della mail in HTML
     html_body = """
-    <h2>⏰ Questi libri che hai salvato stanno uscendo dalle novità!</h2>
-    <p>I seguenti libri sono usciti da almeno 30 giorni. Controlla come stanno andando le vendite:</p>
+    <h2>⏰ Tempo scaduto per i tuoi monitoraggi!</h2>
+    <p>I seguenti libri sono usciti da almeno 30 giorni. È il momento di controllare come stanno andando su Amazon:</p>
     <ul>
     """
     for libro in libri_scaduti:
-        html_body += f"<li><b>{libro['titolo']}</b></li>"
+        # Recupero l'autore (se è un vecchio salvataggio senza autore, metto N/D)
+        autore = libro.get('autore', 'N/D')
+        
+        # Aggiunta dell'autore nel corpo della mail
+        html_body += f"""
+        <li style="margin-bottom: 10px;">
+            <b>{libro['titolo']}</b><br>
+            <span style="color: #555555; font-size: 0.9em;">di {autore}</span> - 
+            <a href="{libro['id']}">Vedi su IBS</a>
+        </li>
+        """
     
     html_body += "</ul><p><i>Buon lavoro di scouting!</i></p>"
 
