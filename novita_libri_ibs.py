@@ -33,7 +33,10 @@ URLS = [
     "https://www.ibs.it/libri/ultima-settimana?useAsn=True&filterDepartment=Salute%2c+famiglia+e+benessere+personale",
     "https://www.ibs.it/libri/ultima-settimana?useAsn=True&filterDepartment=Religione+e+spiritualità",
     "https://www.ibs.it/libri/ultima-settimana?useAsn=True&filterDepartment=Psicologia",
-    "https://www.ibs.it/libri/ultima-settimana?useAsn=True&filterDepartment=Biografie"
+    "https://www.ibs.it/libri/ultima-settimana?useAsn=True&filterDepartment=Biografie",
+    "https://www.ibs.it/libri/ultima-settimana?useAsn=True&filterDepartment=Filosofia",
+    "https://www.ibs.it/libri/ultima-settimana?useAsn=True&filterDepartment=Medicina",
+    "https://www.ibs.it/libri/ultima-settimana?useAsn=True&filterDepartment=Economia+e+diritto"
 ]
 
 EDITORI_TARGET = [
