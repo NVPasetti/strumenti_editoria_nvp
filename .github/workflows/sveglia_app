@@ -2,17 +2,28 @@ name: Sveglia Streamlit App
 
 on:
   schedule:
-    # 0 5 * * * significa: al minuto 0, dell'ora 5 (UTC).
-    # Corrisponde alle 06:00 del mattino in Italia (07:00 con l'ora legale estiva).
     - cron: '0 5 * * *' 
-  workflow_dispatch: # Questo ti permette di cliccare "Run workflow" su GitHub se vuoi testarlo subito a mano
+  workflow_dispatch: 
+
+# Diamo i permessi allo script per auto-mantenersi attivo
+permissions:
+  contents: write
 
 jobs:
   ping-app:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Invia una "visita" virtuale a Streamlit
+      - name: Invia visite multiple per bypassare anti-bot
         run: |
-          curl -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" -sL "https://editoria-nvp.streamlit.app/" > /dev/null
-          echo "✅ App svegliata con successo alle 6:00 (ora italiana)!"
+          # 1. Ping alla pagina principale con un User-Agent completo da browser reale
+          curl -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36" -sL --max-time 30 "https://editoria-nvp.streamlit.app/" > /dev/null
+          
+          # 2. Ping all'endpoint di salute interno del server Streamlit (Infallibile per svegliarlo)
+          curl -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" -sL --max-time 30 "https://editoria-nvp.streamlit.app/_stcore/health" > /dev/null
+          
+          echo "✅ App svegliata con doppio ping (Front-end e Core)!"
+
+      - name: Evita blocco dei 60 giorni di inattività
+        # Questo modulo evita che GitHub spenga l'automazione se non tocchi il codice per due mesi
+        uses: gautamkrishnar/keepalive-workflow@v2
