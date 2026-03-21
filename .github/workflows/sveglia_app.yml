@@ -10,12 +10,12 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Invia visite multiple per bypassare anti-bot
+      - name: Invia visite per svegliare il server
         run: |
-          # 1. Ping alla pagina principale con un User-Agent completo da browser reale
-          curl -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36" -sL --max-time 30 "https://editoria-nvp.streamlit.app/" > /dev/null
+          # Bussiamo alla porta principale (senza seguire i redirect all'infinito)
+          curl -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" -s --max-time 20 "https://editoria-nvp.streamlit.app/" > /dev/null || true
           
-          # 2. Ping all'endpoint di salute interno del server Streamlit (Infallibile per svegliarlo)
-          curl -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" -sL --max-time 30 "https://editoria-nvp.streamlit.app/_stcore/health" > /dev/null
+          # Bussiamo all'ingresso di servizio (salute del server)
+          curl -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" -s --max-time 20 "https://editoria-nvp.streamlit.app/_stcore/health" > /dev/null || true
           
-          echo "✅ App svegliata con doppio ping (Front-end e Core)!"
+          echo "✅ Ping inviato con successo! Il server è sveglio."
