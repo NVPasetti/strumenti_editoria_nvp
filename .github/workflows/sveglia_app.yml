@@ -5,10 +5,6 @@ on:
     - cron: '0 5 * * *' 
   workflow_dispatch: 
 
-# Diamo i permessi allo script per auto-mantenersi attivo
-permissions:
-  contents: write
-
 jobs:
   ping-app:
     runs-on: ubuntu-latest
@@ -23,7 +19,3 @@ jobs:
           curl -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" -sL --max-time 30 "https://editoria-nvp.streamlit.app/_stcore/health" > /dev/null
           
           echo "✅ App svegliata con doppio ping (Front-end e Core)!"
-
-      - name: Evita blocco dei 60 giorni di inattività
-        # Questo modulo evita che GitHub spenga l'automazione se non tocchi il codice per due mesi
-        uses: gautamkrishnar/keepalive-workflow@v2
