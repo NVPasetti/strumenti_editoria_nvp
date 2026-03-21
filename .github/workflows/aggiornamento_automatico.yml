@@ -11,6 +11,10 @@ permissions:
 jobs:
   scrape-and-update:
     runs-on: ubuntu-latest
+    
+    # --- AGGIUNTA PER EVITARE L'AVVISO NODE.JS 20 ---
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
       - name: Checkout del codice
