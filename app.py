@@ -146,6 +146,29 @@ def load_ibs_data(file_name):
         return df
     except Exception: return None
 
+@st.cache_data(ttl=3600)
+def load_estero_data(file_name):
+    """Carica i dati dai file CSV del mercato internazionale"""
+    if not os.path.exists(file_name): return None
+    try:
+        df = pd.read_csv(file_name)
+        df['Titolo'] = df['Titolo'].fillna("Senza Titolo")
+        df['Autore'] = df['Autore'].fillna("N/D")
+        df['Editore'] = df['Editore'].fillna("N/D")
+        
+        # Gestione booleani sicura per la colonna 'Nuovo'
+        if 'Nuovo' not in df.columns:
+            df['Nuovo'] = False
+        else:
+            df['Nuovo'] = df['Nuovo'].astype(bool)
+            
+        # Gestione fallback per la categoria
+        if 'Categoria' not in df.columns:
+            df['Categoria'] = 'Novità'
+            
+        return df
+    except Exception: return None
+
 # --- FUNZIONE HELPER: GENERATORE GRIGLIA AMAZON ---
 def mostra_griglia_libri(df_da_mostrare, limite_key, tab_id):
     totale_libri = len(df_da_mostrare)
@@ -217,7 +240,11 @@ def mostra_griglia_libri(df_da_mostrare, limite_key, tab_id):
 # SIDEBAR: NAVIGAZIONE PRINCIPALE
 # ==========================================
 st.sidebar.header("Strumenti")
-piattaforma = st.sidebar.radio("Scegli servizio:", ["🆕 Novità saggistica (30 giorni)", "🔍 Scouting Amazon"])
+piattaforma = st.sidebar.radio("Scegli servizio:", [
+    "🆕 Novità saggistica (30 giorni)", 
+    "🔍 Scouting Amazon",
+    "🌍 Mercato Internazionale"
+])
 st.sidebar.markdown("---")
 
 # ==========================================
@@ -503,3 +530,87 @@ elif piattaforma == "🔍 Scouting Amazon":
         with tab_potenziale:
             st.caption("Libri recenti con un numero di recensioni tra 35 e 59.")
             mostra_griglia_libri(df_potenziale, 'limite_libri_amz_pot', 'pot')
+
+# ==========================================
+# SEZIONE 3: MERCATO INTERNAZIONALE
+# ==========================================
+elif piattaforma == "🌍 Mercato Internazionale":
+    st.title("🌍 Scouting Internazionale")
+    st.caption("Esplora le novità e i bestseller dai principali mercati esteri.")
+
+    # --- SELETTORE MERCATO ---
+    mercato_scelto = st.radio(
+        "Seleziona il mercato da analizzare:", 
+        ["🇺🇸 USA (Books-A-Million)", "🇫🇷 Francia (Decitre)"],
+        horizontal=True
+    )
+    
+    st.markdown("---")
+
+    # Caricamento del file giusto in base alla scelta
+    file_estero = "dati_bam_scraper.csv" if "USA" in mercato_scelto else "dati_decitre_scraper.csv"
+    df_estero = load_estero_data(file_estero)
+
+    if df_estero is None:
+        st.warning(f"⚠️ Dati per {mercato_scelto} non trovati. Assicurati che lo scraper abbia generato il file '{file_estero}'.")
+    else:
+        # --- FILTRI SIDEBAR ---
+        st.sidebar.header("Filtri Internazionali")
+        solo_nuovi_estero = st.sidebar.checkbox("🆕 Mostra solo i nuovi arrivi")
+        search_estero = st.sidebar.text_input("🔍 Cerca titolo, autore o editore")
+        
+        # Applicazione filtri base
+        if solo_nuovi_estero:
+            df_estero = df_estero[df_estero['Nuovo'] == True]
+            
+        if search_estero:
+            mask = df_estero.astype(str).apply(lambda x: x.str.contains(search_estero, case=False)).any(axis=1)
+            df_estero = df_estero[mask]
+
+        # Separazione dati in Novità e Bestseller
+        df_novita = df_estero[df_estero['Categoria'].str.contains('Novità', case=False, na=False)]
+        df_bestseller = df_estero[~df_estero['Categoria'].str.contains('Novità', case=False, na=False)]
+
+        # --- INTERFACCIA A TAB ---
+        tab_novita, tab_bestseller = st.tabs([f"🆕 Novità ({len(df_novita)})", f"🏆 Bestseller ({len(df_bestseller)})"])
+
+        # Funzione helper interna per non ripetere il codice di rendering
+        def renderizza_lista_estera(dataframe):
+            if dataframe.empty:
+                st.info("Nessun libro da mostrare con i filtri attuali.")
+                return
+                
+            for index, row in dataframe.iterrows():
+                with st.container(border=True):
+                    c_img, c_testo, c_azioni = st.columns([1, 6, 1.5])
+                    
+                    with c_img:
+                        url = row['Copertina']
+                        if pd.notna(url) and str(url).startswith('http'):
+                            st.image(str(url), use_container_width=True)
+                        else:
+                            st.markdown("<div style='text-align:center; padding: 20px; background:#f0f2f6; border-radius:5px;'>No Img</div>", unsafe_allow_html=True)
+                            
+                    with c_testo:
+                        badge = "🆕 " if row['Nuovo'] else ""
+                        st.markdown(f"#### {badge}{row['Titolo']}")
+                        st.markdown(f"**Autore:** {row['Autore']} | **Editore:** {row['Editore']}")
+                        
+                        desc = str(row.get('Descrizione', ''))
+                        if len(desc) > 15 and desc.lower() != "nan" and desc.lower() != "n/d":
+                            with st.expander("📖 Leggi Sinossi Originale"):
+                                st.write(desc)
+                                
+                    with c_azioni:
+                        link = row.get('Link')
+                        if pd.notna(link) and str(link).startswith('http'):
+                            st.link_button("🌐 Apri Sito", link, use_container_width=True)
+                            
+                        # Spazio riservato per implementare un salvataggio database come in Amazon
+                        # st.button("❤️ Salva Appunto", key=f"estero_{index}", use_container_width=True)
+
+        with tab_novita:
+            renderizza_lista_estera(df_novita)
+            
+        with tab_bestseller:
+            renderizza_lista_estera(df_bestseller)
