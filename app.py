@@ -547,7 +547,6 @@ elif piattaforma == "🌍 Mercato Internazionale":
     
     st.markdown("---")
 
-    # Caricamento del file giusto in base alla scelta
     file_estero = "dati_bam_scraper.csv" if "USA" in mercato_scelto else "dati_decitre_scraper.csv"
     df_estero = load_estero_data(file_estero)
 
@@ -559,7 +558,6 @@ elif piattaforma == "🌍 Mercato Internazionale":
         solo_nuovi_estero = st.sidebar.checkbox("🆕 Mostra solo i nuovi arrivi")
         search_estero = st.sidebar.text_input("🔍 Cerca titolo, autore o editore")
         
-        # Applicazione filtri base
         if solo_nuovi_estero:
             df_estero = df_estero[df_estero['Nuovo'] == True]
             
@@ -567,14 +565,11 @@ elif piattaforma == "🌍 Mercato Internazionale":
             mask = df_estero.astype(str).apply(lambda x: x.str.contains(search_estero, case=False)).any(axis=1)
             df_estero = df_estero[mask]
 
-        # Separazione dati in Novità e Bestseller
         df_novita = df_estero[df_estero['Categoria'].str.contains('Novità', case=False, na=False)]
         df_bestseller = df_estero[~df_estero['Categoria'].str.contains('Novità', case=False, na=False)]
 
-        # --- INTERFACCIA A TAB ---
         tab_novita, tab_bestseller = st.tabs([f"🆕 Novità ({len(df_novita)})", f"🏆 Bestseller ({len(df_bestseller)})"])
 
-        # Funzione helper interna per non ripetere il codice di rendering
         def renderizza_lista_estera(dataframe):
             if dataframe.empty:
                 st.info("Nessun libro da mostrare con i filtri attuali.")
@@ -582,7 +577,8 @@ elif piattaforma == "🌍 Mercato Internazionale":
                 
             for index, row in dataframe.iterrows():
                 with st.container(border=True):
-                    c_img, c_testo, c_azioni = st.columns([1, 6, 1.5])
+                    # Struttura delle colonne per allineare l'immagine e il blocco principale
+                    c_img, c_main = st.columns([1, 6])
                     
                     with c_img:
                         url = row['Copertina']
@@ -591,23 +587,27 @@ elif piattaforma == "🌍 Mercato Internazionale":
                         else:
                             st.markdown("<div style='text-align:center; padding: 20px; background:#f0f2f6; border-radius:5px;'>No Img</div>", unsafe_allow_html=True)
                             
-                    with c_testo:
-                        badge = "🆕 " if row['Nuovo'] else ""
-                        st.markdown(f"#### {badge}{row['Titolo']}")
-                        st.markdown(f"**Autore:** {row['Autore']} | **Editore:** {row['Editore']}")
+                    with c_main:
+                        # Colonna principale divisa tra informazioni e pulsanti
+                        c_testo, c_azioni = st.columns([5, 1.5])
                         
+                        with c_testo:
+                            badge = "🆕 " if row['Nuovo'] else ""
+                            st.markdown(f"#### {badge}{row['Titolo']}")
+                        
+                        with c_azioni:
+                            link = row.get('Link')
+                            if pd.notna(link) and str(link).startswith('http'):
+                                st.link_button("🌐 Apri Sito", link, use_container_width=True)
+                                
+                        # Autore ed Editore
+                        st.markdown(f"**{row['Autore']}** | *{row['Editore']}*")
+                        
+                        # Sinossi a comparsa (larga quanto il blocco principale c_main)
                         desc = str(row.get('Descrizione', ''))
                         if len(desc) > 15 and desc.lower() != "nan" and desc.lower() != "n/d":
-                            with st.expander("📖 Leggi Sinossi Originale"):
+                            with st.expander("📖 Leggi sinossi originale"):
                                 st.write(desc)
-                                
-                    with c_azioni:
-                        link = row.get('Link')
-                        if pd.notna(link) and str(link).startswith('http'):
-                            st.link_button("🌐 Apri Sito", link, use_container_width=True)
-                            
-                        # Spazio riservato per implementare un salvataggio database come in Amazon
-                        # st.button("❤️ Salva Appunto", key=f"estero_{index}", use_container_width=True)
 
         with tab_novita:
             renderizza_lista_estera(df_novita)
