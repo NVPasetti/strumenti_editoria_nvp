@@ -19,7 +19,8 @@ if sys.stdout.encoding != 'utf-8':
     except AttributeError:
         pass
 
-CSV_FILENAME = "dati_big5_scraper.csv"
+# Nome del file CSV aggiornato come richiesto
+CSV_FILENAME = "dati_internazionali.csv"
 
 # ==========================================
 # 🐧 1. PENGUIN RANDOM HOUSE
@@ -46,37 +47,40 @@ async def get_penguin_releases(tab):
             if full_url not in urls_da_visitare:
                 urls_da_visitare.append(full_url)
                 
-    print(f"✅ Trovati {len(urls_da_visitare)} libri su Penguin. Inizio estrazione...")
+    print(f"✅ Trovati {len(urls_da_visitare)} titoli su Penguin. Inizio estrazione...")
     
     risultati = []
     for link in urls_da_visitare:
         print(f"  [Penguin] 📖 {link}")
-        await tab.get(link)
-        await asyncio.sleep(random.uniform(2.0, 3.5))
-        html = await tab.get_content()
-        soup = BeautifulSoup(html, 'html.parser')
-        
-        dettagli = {"Editore": "Penguin Random House", "Titolo": "N/D", "Autore": "N/D", "Descrizione": "N/D", "Copertina": "N/D", "Link": link}
-        
-        h1 = soup.find('h1')
-        if h1: dettagli["Titolo"] = h1.get_text(strip=True)
+        try:
+            await tab.get(link)
+            await asyncio.sleep(random.uniform(2.0, 3.5))
+            html = await tab.get_content()
+            soup = BeautifulSoup(html, 'html.parser')
             
-        h2 = soup.find('h2')
-        if h2: 
-            testo_autore = h2.get_text(strip=True)
-            dettagli["Autore"] = re.sub(r'(?i)^by\s*', '', testo_autore).strip()
+            dettagli = {"Editore": "Penguin Random House", "Titolo": "N/D", "Autore": "N/D", "Descrizione": "N/D", "Copertina": "N/D", "Link": link}
             
-        desc_div = soup.find('div', id='book-description-copy')
-        if desc_div:
-            for btn in desc_div.find_all(['button', 'a']): btn.decompose()
-            dettagli["Descrizione"] = desc_div.get_text(separator=' ', strip=True)
-            
-        img_tag = soup.find('img', class_=re.compile(r'responsive_img', re.I))
-        if img_tag:
-            src = img_tag.get('src') or img_tag.get('data-src') or ""
-            dettagli["Copertina"] = src if src.startswith('http') else "https:" + src
-            
-        risultati.append(dettagli)
+            h1 = soup.find('h1')
+            if h1: dettagli["Titolo"] = h1.get_text(strip=True)
+                
+            h2 = soup.find('h2')
+            if h2: 
+                testo_autore = h2.get_text(strip=True)
+                dettagli["Autore"] = re.sub(r'(?i)^by\s*', '', testo_autore).strip()
+                
+            desc_div = soup.find('div', id='book-description-copy')
+            if desc_div:
+                for btn in desc_div.find_all(['button', 'a']): btn.decompose()
+                dettagli["Descrizione"] = desc_div.get_text(separator=' ', strip=True)
+                
+            img_tag = soup.find('img', class_=re.compile(r'responsive_img', re.I))
+            if img_tag:
+                src = img_tag.get('src') or img_tag.get('data-src') or ""
+                dettagli["Copertina"] = src if src.startswith('http') else "https:" + src
+                
+            risultati.append(dettagli)
+        except:
+            continue
         
     return risultati
 
@@ -105,39 +109,42 @@ async def get_harper_releases(tab):
             if full_url not in urls_pagina:
                 urls_pagina.append(full_url)
                 
-    print(f"✅ Trovati {len(urls_pagina)} libri su HarperCollins. Inizio estrazione...")
+    print(f"✅ Trovati {len(urls_pagina)} titoli su HarperCollins. Inizio estrazione...")
     
     risultati = []
     for link in urls_pagina:
         print(f"  [Harper] 📖 {link}")
-        await tab.get(link)
-        await asyncio.sleep(random.uniform(2.5, 4.0)) 
-        html = await tab.get_content()
-        soup = BeautifulSoup(html, 'html.parser')
-        
-        dettagli = {"Editore": "HarperCollins", "Titolo": "N/D", "Autore": "N/D", "Descrizione": "N/D", "Copertina": "N/D", "Link": link}
-        
-        titolo_principale = soup.find('h1', class_='product-title')
-        sottotitolo = soup.find('h3')
-        if titolo_principale:
-            dettagli["Titolo"] = titolo_principale.get_text(strip=True) + (". " + sottotitolo.get_text(strip=True) if sottotitolo else "")
+        try:
+            await tab.get(link)
+            await asyncio.sleep(random.uniform(2.5, 4.0)) 
+            html = await tab.get_content()
+            soup = BeautifulSoup(html, 'html.parser')
             
-        author_p = soup.find('p', class_='authorsParse')
-        if author_p:
-            testo_pulito = re.sub(r'(?i)^by\s*', '', author_p.get_text(strip=True)).strip()
-            dettagli["Autore"] = testo_pulito[:-1].strip() if testo_pulito.endswith(',') else testo_pulito
+            dettagli = {"Editore": "HarperCollins", "Titolo": "N/D", "Autore": "N/D", "Descrizione": "N/D", "Copertina": "N/D", "Link": link}
             
-        img_tag = soup.find('img', id='selected-img')
-        if img_tag:
-            src = img_tag.get('src') or img_tag.get('data-src') or ""
-            dettagli["Copertina"] = ("https:" + src) if src.startswith('//') else src
-            
-        desc_div = soup.find('div', id='hc-product-description')
-        if desc_div:
-            for btn in desc_div.find_all(['button', 'a']): btn.decompose()
-            dettagli["Descrizione"] = desc_div.get_text(separator=' ', strip=True)
-            
-        risultati.append(dettagli)
+            titolo_principale = soup.find('h1', class_='product-title')
+            sottotitolo = soup.find('h3')
+            if titolo_principale:
+                dettagli["Titolo"] = titolo_principale.get_text(strip=True) + (". " + sottotitolo.get_text(strip=True) if sottotitolo else "")
+                
+            author_p = soup.find('p', class_='authorsParse')
+            if author_p:
+                testo_pulito = re.sub(r'(?i)^by\s*', '', author_p.get_text(strip=True)).strip()
+                dettagli["Autore"] = testo_pulito[:-1].strip() if testo_pulito.endswith(',') else testo_pulito
+                
+            img_tag = soup.find('img', id='selected-img')
+            if img_tag:
+                src = img_tag.get('src') or img_tag.get('data-src') or ""
+                dettagli["Copertina"] = ("https:" + src) if src.startswith('//') else src
+                
+            desc_div = soup.find('div', id='hc-product-description')
+            if desc_div:
+                for btn in desc_div.find_all(['button', 'a']): btn.decompose()
+                dettagli["Descrizione"] = desc_div.get_text(separator=' ', strip=True)
+                
+            risultati.append(dettagli)
+        except:
+            continue
         
     return risultati
 
@@ -160,37 +167,37 @@ async def get_simon_releases(tab):
         if a_tag and a_tag.get('href'):
             href = a_tag.get('href')
             full_url = href if href.startswith('http') else "https://www.simonandschuster.com" + href
-            
             img = a_tag.find('img')
             copertina = (img.get('data-src') or img.get('src')) if img else "N/D"
-            
             title_div = div.find('div', class_=re.compile(r'book-title'))
             titolo = title_div.get_text(strip=True) if title_div else "N/D"
-            
             libri_trovati.append({"Link": full_url, "Titolo": titolo, "Copertina": copertina})
             
-    print(f"✅ Trovati {len(libri_trovati)} libri su Simon & Schuster. Inizio estrazione...")
+    print(f"✅ Trovati {len(libri_trovati)} titoli su Simon & Schuster. Inizio estrazione...")
     
     risultati = []
     for libro in libri_trovati:
         print(f"  [S&S] 📖 {libro['Link']}")
-        await tab.get(libro['Link'])
-        await asyncio.sleep(random.uniform(2.5, 4.0))
-        html = await tab.get_content()
-        soup = BeautifulSoup(html, 'html.parser')
-        
-        dettagli = {"Editore": "Simon & Schuster", "Titolo": libro['Titolo'], "Autore": "N/D", "Descrizione": "N/D", "Copertina": libro['Copertina'], "Link": libro['Link']}
-        
-        author_tag = soup.find(class_=re.compile(r'author|contributor', re.I))
-        if author_tag:
-            dettagli["Autore"] = re.sub(r'(?i)^by\s*', '', author_tag.get_text(strip=True))
+        try:
+            await tab.get(libro['Link'])
+            await asyncio.sleep(random.uniform(2.5, 4.0))
+            html = await tab.get_content()
+            soup = BeautifulSoup(html, 'html.parser')
             
-        desc_box = soup.find(class_=re.compile(r'description|about|summary|content', re.I))
-        if desc_box:
-            for btn in desc_box.find_all(['button', 'a']): btn.decompose()
-            dettagli["Descrizione"] = desc_box.get_text(separator=' ', strip=True)
+            dettagli = {"Editore": "Simon & Schuster", "Titolo": libro['Titolo'], "Autore": "N/D", "Descrizione": "N/D", "Copertina": libro['Copertina'], "Link": libro['Link']}
             
-        risultati.append(dettagli)
+            author_tag = soup.find(class_=re.compile(r'author|contributor', re.I))
+            if author_tag:
+                dettagli["Autore"] = re.sub(r'(?i)^by\s*', '', author_tag.get_text(strip=True))
+                
+            desc_box = soup.find(class_=re.compile(r'description|about|summary|content', re.I))
+            if desc_box:
+                for btn in desc_box.find_all(['button', 'a']): btn.decompose()
+                dettagli["Descrizione"] = desc_box.get_text(separator=' ', strip=True)
+                
+            risultati.append(dettagli)
+        except:
+            continue
         
     return risultati
 
@@ -217,42 +224,44 @@ async def get_macmillan_releases(tab):
         if parent_a and parent_a.get('href'):
             href = parent_a.get('href')
             if "search" in href or "author" in href: continue
-                
             full_url = href if href.startswith('http') else "https://us.macmillan.com" + href
             if full_url not in urls_visti:
                 urls_visti.add(full_url)
                 src = img.get('src') or img.get('data-src') or ""
                 libri_trovati.append({"Link": full_url, "Copertina": src})
                 
-    print(f"✅ Trovati {len(libri_trovati)} libri su Macmillan. Inizio estrazione...")
+    print(f"✅ Trovati {len(libri_trovati)} titoli su Macmillan. Inizio estrazione...")
     
     risultati = []
     for libro in libri_trovati:
         print(f"  [Macmillan] 📖 {libro['Link']}")
-        await tab.get(libro['Link'])
-        await asyncio.sleep(random.uniform(2.5, 4.0))
-        html = await tab.get_content()
-        soup = BeautifulSoup(html, 'html.parser')
-        
-        dettagli = {"Editore": "Macmillan", "Titolo": "N/D", "Autore": "N/D", "Descrizione": "N/D", "Copertina": libro['Copertina'], "Link": libro['Link']}
-        
-        h1 = soup.find('h1', class_=re.compile(r'section-title__heading'))
-        h2 = soup.find('h2', class_=re.compile(r'section-title__sub-title'))
-        if h1:
-            dettagli["Titolo"] = h1.get_text(strip=True) + (". " + h2.get_text(strip=True) if h2 else "")
+        try:
+            await tab.get(libro['Link'])
+            await asyncio.sleep(random.uniform(2.5, 4.0))
+            html = await tab.get_content()
+            soup = BeautifulSoup(html, 'html.parser')
             
-        author_p = soup.find('p', class_=re.compile(r'section-title__content'))
-        if author_p:
-            span_label = author_p.find('span', class_=re.compile(r'section-title__label'))
-            if span_label: span_label.decompose()
-            dettagli["Autore"] = author_p.get_text(strip=True)
+            dettagli = {"Editore": "Macmillan", "Titolo": "N/D", "Autore": "N/D", "Descrizione": "N/D", "Copertina": libro['Copertina'], "Link": libro['Link']}
+            
+            h1 = soup.find('h1', class_=re.compile(r'section-title__heading'))
+            h2 = soup.find('h2', class_=re.compile(r'section-title__sub-title'))
+            if h1:
+                dettagli["Titolo"] = h1.get_text(strip=True) + (". " + h2.get_text(strip=True) if h2 else "")
+                
+            author_p = soup.find('p', class_=re.compile(r'section-title__content'))
+            if author_p:
+                span_label = author_p.find('span', class_=re.compile(r'section-title__label'))
+                if span_label: span_label.decompose()
+                dettagli["Autore"] = author_p.get_text(strip=True)
 
-        desc_div = soup.find('div', class_=re.compile(r'book-about__body'))
-        if desc_div:
-            for btn in desc_div.find_all(['button', 'a']): btn.decompose()
-            dettagli["Descrizione"] = desc_div.get_text(separator=' ', strip=True)
-            
-        risultati.append(dettagli)
+            desc_div = soup.find('div', class_=re.compile(r'book-about__body'))
+            if desc_div:
+                for btn in desc_div.find_all(['button', 'a']): btn.decompose()
+                dettagli["Descrizione"] = desc_div.get_text(separator=' ', strip=True)
+                
+            risultati.append(dettagli)
+        except:
+            continue
         
     return risultati
 
@@ -284,51 +293,53 @@ async def get_hachette_releases(tab):
         full_url = href if href.startswith('http') else "https://www.hachettebookgroup.com" + href
         urls_visti.add(full_url)
         
-    print(f"✅ Trovati {len(urls_visti)} libri su Hachette. Inizio estrazione...")
+    print(f"✅ Trovati {len(urls_visti)} titoli su Hachette. Inizio estrazione...")
     
     risultati = []
     for link in urls_visti:
         print(f"  [Hachette] 📖 {link}")
-        await tab.get(link)
-        await asyncio.sleep(random.uniform(2.5, 4.0))
-        html = await tab.get_content()
-        soup = BeautifulSoup(html, 'html.parser')
-        
-        dettagli = {"Editore": "Hachette", "Titolo": "N/D", "Autore": "N/D", "Descrizione": "N/D", "Copertina": "N/D", "Link": link}
-        
-        h1 = soup.find('h1')
-        if h1: dettagli["Titolo"] = h1.get_text(strip=True)
+        try:
+            await tab.get(link)
+            await asyncio.sleep(random.uniform(2.5, 4.0))
+            html = await tab.get_content()
+            soup = BeautifulSoup(html, 'html.parser')
             
-        author_tag = soup.find(class_=re.compile(r'author|contributor', re.I))
-        if author_tag:
-            testo_autore = author_tag.get_text(strip=True)
-            parti = re.split(r'(?i)by\s+', testo_autore)
-            dettagli["Autore"] = parti[-1].strip() if len(parti) > 1 else testo_autore
+            dettagli = {"Editore": "Hachette", "Titolo": "N/D", "Autore": "N/D", "Descrizione": "N/D", "Copertina": "N/D", "Link": link}
             
-        desc_box = soup.find(id=re.compile(r'description|about', re.I)) or soup.find(class_=re.compile(r'description|about|summary', re.I))
-        if desc_box:
-            for btn in desc_box.find_all(['button', 'a']): btn.decompose()
-            dettagli["Descrizione"] = desc_box.get_text(separator=' ', strip=True)
-            
-        img_tag = soup.find('img', class_=re.compile(r'cover|product|book', re.I))
-        if img_tag:
-            dettagli["Copertina"] = img_tag.get('data-src') or img_tag.get('src') or ""
-            
-        risultati.append(dettagli)
+            h1 = soup.find('h1')
+            if h1: dettagli["Titolo"] = h1.get_text(strip=True)
+                
+            author_tag = soup.find(class_=re.compile(r'author|contributor', re.I))
+            if author_tag:
+                testo_autore = author_tag.get_text(strip=True)
+                parti = re.split(r'(?i)by\s+', testo_autore)
+                dettagli["Autore"] = parti[-1].strip() if len(parti) > 1 else testo_autore
+                
+            desc_box = soup.find(id=re.compile(r'description|about', re.I)) or soup.find(class_=re.compile(r'description|about|summary', re.I))
+            if desc_box:
+                for btn in desc_box.find_all(['button', 'a']): btn.decompose()
+                dettagli["Descrizione"] = desc_box.get_text(separator=' ', strip=True)
+                
+            img_tag = soup.find('img', class_=re.compile(r'cover|product|book', re.I))
+            if img_tag:
+                dettagli["Copertina"] = img_tag.get('data-src') or img_tag.get('src') or ""
+                
+            risultati.append(dettagli)
+        except:
+            continue
         
     return risultati
 
 # ==========================================
-# 💾 SINCRONIZZATORE CSV (Aggiunge i nuovi e rimuove gli spariti)
+# 💾 SINCRONIZZATORE CSV (Internazionale)
 # ==========================================
 def sincronizza_csv_editore(nuovi_dati, nome_editore):
     """
-    Sostituisce TUTTI i libri del determinato editore con quelli appena scaricati.
-    I vecchi libri che non ci sono più vengono eliminati in automatico.
-    Se un libro c'era già, conserva la sua Data_Aggiunta originale.
+    Sostituisce i titoli dell'editore rimuovendo quelli non più presenti.
+    Mantiene la data di aggiunta originale per i titoli che restano.
     """
     if not nuovi_dati:
-        print(f"⚠️ Attenzione: Nessun dato trovato per {nome_editore}. Mantengo lo storico invariato per sicurezza.")
+        print(f"⚠️ Nessun dato corrente per {nome_editore}. Salto sincronizzazione.")
         return
 
     oggi_str = datetime.now().date().isoformat()
@@ -337,83 +348,56 @@ def sincronizza_csv_editore(nuovi_dati, nome_editore):
 
     if os.path.exists(CSV_FILENAME):
         df_vecchio = pd.read_csv(CSV_FILENAME)
-
-        # Separiamo gli altri editori da quello che stiamo processando
         df_altri = df_vecchio[df_vecchio['Editore'] != nome_editore]
         df_vecchio_editore = df_vecchio[df_vecchio['Editore'] == nome_editore]
-
-        # Creiamo un dizionario delle date dei libri che già avevamo
+        
         date_storiche = dict(zip(df_vecchio_editore['Link'], df_vecchio_editore['Data_Aggiunta']))
-
-        # Assegnamo le date: se c'era già, riprendi la vecchia. Se non c'è, usa la data di oggi.
+        
         df_nuovi['Data_Aggiunta'] = df_nuovi['Link'].apply(lambda x: date_storiche.get(x, oggi_str))
-        # È "Nuovo" solo se non era nel dizionario storico
         df_nuovi['Nuovo'] = df_nuovi['Link'].apply(lambda x: False if x in date_storiche else True)
-
-        # Ricomponiamo il puzzle: altri editori + le novità (i vecchi di questo editore non presenti in df_nuovi vengono cestinati)
+        
         df_completo = pd.concat([df_altri, df_nuovi], ignore_index=True)
-
     else:
-        # Se il CSV non esiste proprio, sono tutti nuovi!
         df_nuovi['Data_Aggiunta'] = oggi_str
         df_nuovi['Nuovo'] = True
         df_completo = df_nuovi
 
-    # Riordiniamo le colonne in modo pulito
     cols = ['Nuovo', 'Categoria', 'Data_Aggiunta', 'Editore', 'Copertina', 'Titolo', 'Autore', 'Descrizione', 'Link']
     esistenti = [c for c in cols if c in df_completo.columns]
     df_completo = df_completo[esistenti]
-
     df_completo.to_csv(CSV_FILENAME, index=False)
-    print(f"🔄 {nome_editore} sincronizzato sul CSV. {len(df_nuovi)} titoli correnti.")
-
+    print(f"🔄 Database '{CSV_FILENAME}' aggiornato per {nome_editore}.")
 
 async def main():
     cartella_temporanea = tempfile.mkdtemp()
-    print(f"🚀 Creazione browser stealth in corso...")
+    print(f"🚀 Avvio Scraper Internazionale...")
     
     browser = await uc.start(
-        headless=False, 
-        no_sandbox=True, 
+        headless=False, no_sandbox=True, 
         user_data_dir=cartella_temporanea,
         browser_args=['--disable-dev-shm-usage', '--disable-gpu']
     )
     tab = browser.main_tab 
     
     try:
-        # PENGUIN
-        libri_penguin = await get_penguin_releases(tab)
-        sincronizza_csv_editore(libri_penguin, "Penguin Random House")
-        
-        # HARPERCOLLINS
-        libri_harper = await get_harper_releases(tab)
-        sincronizza_csv_editore(libri_harper, "HarperCollins")
-        
-        # SIMON & SCHUSTER
-        libri_simon = await get_simon_releases(tab)
-        sincronizza_csv_editore(libri_simon, "Simon & Schuster")
-        
-        # MACMILLAN
-        libri_macmillan = await get_macmillan_releases(tab)
-        sincronizza_csv_editore(libri_macmillan, "Macmillan")
-        
-        # HACHETTE
-        libri_hachette = await get_hachette_releases(tab)
-        sincronizza_csv_editore(libri_hachette, "Hachette")
+        # Sequenza sincronizzazione Big 5
+        sincronizza_csv_editore(await get_penguin_releases(tab), "Penguin Random House")
+        sincronizza_csv_editore(await get_harper_releases(tab), "HarperCollins")
+        sincronizza_csv_editore(await get_simon_releases(tab), "Simon & Schuster")
+        sincronizza_csv_editore(await get_macmillan_releases(tab), "Macmillan")
+        sincronizza_csv_editore(await get_hachette_releases(tab), "Hachette")
         
     except Exception as e:
-        print(f"⚠️ Errore durante l'esecuzione: {e}")
+        print(f"⚠️ Errore critico: {e}")
     finally:
         browser.stop()
         
-    print("\n" + "="*70)
-    print(f"🎉 SINCRONIZZAZIONE COMPIUTA!")
-    print("="*70)
+    print(f"\n✅ Sincronizzazione conclusa. File pronto: {CSV_FILENAME}")
 
 if __name__ == "__main__":
     try:
         uc.loop().run_until_complete(main())
     except Exception as e:
-        print(f"❌ ERRORE CRITICO: {e}")
+        print(f"❌ Errore avvio: {e}")
     finally:
-        input("\nPremi INVIO per chiudere...")
+        input("\nFine operazioni. Premi INVIO per uscire...")
