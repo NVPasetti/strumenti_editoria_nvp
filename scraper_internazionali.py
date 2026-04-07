@@ -370,10 +370,12 @@ def sincronizza_csv_editore(nuovi_dati, nome_editore):
 
 async def main():
     cartella_temporanea = tempfile.mkdtemp()
-    print(f"🚀 Avvio Scraper Internazionale...")
+    print(f"🚀 Avvio Scraper Internazionale (Modalità GitHub Actions)...")
     
+    # MODIFICATO headless=True PER L'ESECUZIONE SU SERVER
     browser = await uc.start(
-        headless=False, no_sandbox=True, 
+        headless=True, 
+        no_sandbox=True, 
         user_data_dir=cartella_temporanea,
         browser_args=['--disable-dev-shm-usage', '--disable-gpu']
     )
@@ -400,4 +402,5 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"❌ Errore avvio: {e}")
     finally:
-        input("\nFine operazioni. Premi INVIO per uscire...")
+        # RIMOSSO l'input() finale
+        print("\nFine operazioni. Script terminato.")
