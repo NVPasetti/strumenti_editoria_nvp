@@ -27,6 +27,9 @@ jobs:
     - name: Esecuzione Scraper Internazionali
       run: python scraper_internazionali.py
 
+    - name: Esecuzione Scraper NYT Bestsellers
+      run: python scraper_nyt.py
+
     - name: Esecuzione Scraper Decitre
       run: python scraper_decitre.py
 
