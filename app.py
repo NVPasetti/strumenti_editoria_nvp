@@ -452,7 +452,7 @@ if piattaforma == "🆕 Novità saggistica (30 giorni)":
                                     "data_scadenza": scadenza
                                 }
                                 aggiungi_reminder_db(link, row['Titolo'], autore_libro, scadenza)
-                            st.rerun()
+                        st.rerun()
                     st.markdown("---")
 
 # ==========================================
@@ -541,13 +541,14 @@ elif piattaforma == "🌍 Mercato Internazionale":
     # --- SELETTORE MERCATO ---
     mercato_scelto = st.radio(
         "Seleziona il mercato da analizzare:", 
-        ["🇺🇸 USA (Books-A-Million)", "🇫🇷 Francia (Decitre)"],
+        ["🇺🇸 USA (Top 5 Editori)", "🇫🇷 Francia (Decitre)"],
         horizontal=True
     )
     
     st.markdown("---")
 
-    file_estero = "dati_bam_scraper.csv" if "USA" in mercato_scelto else "dati_decitre_scraper.csv"
+    # Ora legge il nuovo super-database per gli USA!
+    file_estero = "dati_internazionali.csv" if "USA" in mercato_scelto else "dati_decitre_scraper.csv"
     df_estero = load_estero_data(file_estero)
 
     if df_estero is None:
