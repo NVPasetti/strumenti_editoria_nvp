@@ -538,16 +538,19 @@ elif piattaforma == "🌍 Mercato Internazionale":
     st.title("🌍 Scouting Internazionale")
     st.caption("Esplora le novità e i bestseller dai principali mercati esteri.")
 
+    # --- INIZIALIZZAZIONE LIMITI PAGINAZIONE ---
+    if 'limite_estero_novita' not in st.session_state: st.session_state.limite_estero_novita = 50
+    if 'limite_estero_best' not in st.session_state: st.session_state.limite_estero_best = 50
+
     # --- SELETTORE MERCATO ---
     mercato_scelto = st.radio(
         "Seleziona il mercato da analizzare:", 
-        ["🇺🇸 USA (Top 5 Editori)", "🇫🇷 Francia (Decitre)"],
+        ["🇺🇸 USA", "🇫🇷 Francia"],
         horizontal=True
     )
     
     st.markdown("---")
 
-    # Ora legge il nuovo super-database per gli USA!
     file_estero = "dati_internazionali.csv" if "USA" in mercato_scelto else "dati_decitre_scraper.csv"
     df_estero = load_estero_data(file_estero)
 
@@ -559,6 +562,13 @@ elif piattaforma == "🌍 Mercato Internazionale":
         solo_nuovi_estero = st.sidebar.checkbox("🆕 Mostra solo i nuovi arrivi")
         search_estero = st.sidebar.text_input("🔍 Cerca titolo, autore o editore")
         
+        # Se l'utente fa una nuova ricerca, resettiamo il limite a 50
+        if 'old_search_estero' not in st.session_state: st.session_state.old_search_estero = ""
+        if search_estero != st.session_state.old_search_estero:
+            st.session_state.limite_estero_novita = 50
+            st.session_state.limite_estero_best = 50
+            st.session_state.old_search_estero = search_estero
+
         if solo_nuovi_estero:
             df_estero = df_estero[df_estero['Nuovo'] == True]
             
@@ -571,14 +581,17 @@ elif piattaforma == "🌍 Mercato Internazionale":
 
         tab_novita, tab_bestseller = st.tabs([f"🆕 Novità ({len(df_novita)})", f"🏆 Bestseller ({len(df_bestseller)})"])
 
-        def renderizza_lista_estera(dataframe):
+        def renderizza_lista_estera(dataframe, limit_key, tab_id):
             if dataframe.empty:
                 st.info("Nessun libro da mostrare con i filtri attuali.")
                 return
                 
-            for index, row in dataframe.iterrows():
+            totale_libri = len(dataframe)
+            # Tagliamo il dataframe in base al limite attuale
+            df_mostrato = dataframe.iloc[:st.session_state[limit_key]]
+                
+            for index, row in df_mostrato.iterrows():
                 with st.container(border=True):
-                    # Struttura delle colonne per allineare l'immagine e il blocco principale
                     c_img, c_main = st.columns([1, 6])
                     
                     with c_img:
@@ -589,7 +602,6 @@ elif piattaforma == "🌍 Mercato Internazionale":
                             st.markdown("<div style='text-align:center; padding: 20px; background:#f0f2f6; border-radius:5px;'>No Img</div>", unsafe_allow_html=True)
                             
                     with c_main:
-                        # Colonna principale divisa tra informazioni e pulsanti
                         c_testo, c_azioni = st.columns([5, 1.5])
                         
                         with c_testo:
@@ -601,17 +613,24 @@ elif piattaforma == "🌍 Mercato Internazionale":
                             if pd.notna(link) and str(link).startswith('http'):
                                 st.link_button("🌐 Apri Sito", link, use_container_width=True)
                                 
-                        # Autore ed Editore
                         st.markdown(f"**{row['Autore']}** | *{row['Editore']}*")
                         
-                        # Sinossi a comparsa (larga quanto il blocco principale c_main)
                         desc = str(row.get('Descrizione', ''))
                         if len(desc) > 15 and desc.lower() != "nan" and desc.lower() != "n/d":
                             with st.expander("📖 Leggi sinossi originale"):
                                 st.write(desc)
+            
+            # --- PULSANTE CARICA ALTRI ---
+            if st.session_state[limit_key] < totale_libri:
+                st.markdown("---")
+                c1, c2, c3 = st.columns([1, 2, 1])
+                with c2:
+                    if st.button("⬇️ Carica altri 50 libri", use_container_width=True, key=f"btn_load_{tab_id}"):
+                        st.session_state[limit_key] += 50
+                        st.rerun()
 
         with tab_novita:
-            renderizza_lista_estera(df_novita)
+            renderizza_lista_estera(df_novita, 'limite_estero_novita', 'novita_tab')
             
         with tab_bestseller:
-            renderizza_lista_estera(df_bestseller)
+            renderizza_lista_estera(df_bestseller, 'limite_estero_best', 'best_tab')
