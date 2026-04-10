@@ -226,7 +226,7 @@ def mostra_griglia_libri(df_da_mostrare, limite_key, tab_id):
         c1, c2, c3 = st.columns([1, 2, 1])
         with c2:
             if st.button("⬇️ Carica altri libri", use_container_width=True, key=f"btn_load_{tab_id}"):
-                st.session_state[limite_key] += 150
+                st.session_state[limite_key] += 30
                 st.rerun()
 
 # ==========================================
@@ -349,6 +349,7 @@ if piattaforma == "🆕 Novità saggistica (30 giorni)":
                         with c1:
                             url = row['Copertina']
                             if pd.notna(url) and str(url).startswith('http'):
+                                # IMMAGINE TRAMITE HTML FULMINEO
                                 st.markdown(f"<img src='{url}' style='width: 120px; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>", unsafe_allow_html=True)
                             else:
                                 st.markdown("<div style='width: 120px; height: 160px; background: #f0f2f6; display: flex; align-items: center; justify-content: center; border-radius: 4px;'>🖼️ No Img</div>", unsafe_allow_html=True)
@@ -362,7 +363,6 @@ if piattaforma == "🆕 Novità saggistica (30 giorni)":
                                 autore_libro = str(row.get('Autore', 'N/D'))
                                 is_reminded = link in st.session_state.reminders
                                 btn_label = "✅ Seguito" if is_reminded else "🕒 Monitora"
-                                btn_type = "primary" if is_reminded else "secondary"
                                 
                                 if st.button(btn_label, key=f"rem_vip_{index}", use_container_width=True):
                                     if is_reminded:
@@ -404,6 +404,7 @@ if piattaforma == "🆕 Novità saggistica (30 giorni)":
                         with c_img:
                             url = row['Copertina']
                             if pd.notna(url) and str(url).startswith('http'):
+                                # IMMAGINE TRAMITE HTML FULMINEO
                                 st.markdown(f"<img src='{url}' style='width: 60px; border-radius: 3px;'>", unsafe_allow_html=True)
                             else:
                                 st.markdown("<div style='width: 60px; height: 90px; background: #f0f2f6; border-radius: 3px;'></div>", unsafe_allow_html=True)
@@ -506,7 +507,7 @@ elif piattaforma == "🔍 Scouting Amazon":
             mostra_griglia_libri(df_potenziale, 'limite_libri_amz_pot', 'pot')
 
 # ==========================================
-# SEZIONE 3: MERCATO INTERNAZIONALE (TEST ABLAZIONE)
+# SEZIONE 3: MERCATO INTERNAZIONALE
 # ==========================================
 elif piattaforma == "🌍 Mercato Internazionale":
     st.title("🌍 Scouting Internazionale")
@@ -515,8 +516,7 @@ elif piattaforma == "🌍 Mercato Internazionale":
     if 'limite_estero_novita' not in st.session_state: st.session_state.limite_estero_novita = 20
     if 'limite_estero_best' not in st.session_state: st.session_state.limite_estero_best = 20
 
-    # TEST: Rimosso temporaneamente il NYT per isolare il problema
-    mercato_scelto = st.radio("Seleziona il mercato da analizzare:", ["🇺🇸 USA (Solo Big 5)", "🇫🇷 Francia"], horizontal=True)
+    mercato_scelto = st.radio("Seleziona il mercato da analizzare:", ["🇺🇸 USA", "🇫🇷 Francia"], horizontal=True)
     st.markdown("---")
 
     file_estero = "dati_internazionali.csv" if "USA" in mercato_scelto else "dati_decitre_scraper.csv"
@@ -525,10 +525,6 @@ elif piattaforma == "🌍 Mercato Internazionale":
     if df_estero is None:
         st.warning(f"⚠️ Dati per {mercato_scelto} non trovati. Assicurati che lo scraper abbia generato il file '{file_estero}'.")
     else:
-        # SE SIAMO IN USA, ELIMINIAMO I BESTSELLER (NYT)
-        if "USA" in mercato_scelto:
-            df_estero = df_estero[df_estero['Categoria'] != 'Bestseller']
-
         st.sidebar.header("Filtri Internazionali")
         solo_nuovi_estero = st.sidebar.checkbox("🆕 Mostra solo i nuovi arrivi")
         search_estero = st.sidebar.text_input("🔍 Cerca titolo, autore o editore")
@@ -561,6 +557,7 @@ elif piattaforma == "🌍 Mercato Internazionale":
                     with c_img:
                         url = row['Copertina']
                         if pd.notna(url) and str(url).startswith('http'):
+                            # IMMAGINE TRAMITE HTML FULMINEO (Salva l'app dal crash col NYT!)
                             st.markdown(f"<img src='{url}' style='width: 100%; border-radius: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>", unsafe_allow_html=True)
                         else:
                             st.markdown("<div style='text-align:center; padding: 20px; background:#f0f2f6; border-radius:5px;'>No Img</div>", unsafe_allow_html=True)
