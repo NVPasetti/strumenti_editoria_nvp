@@ -197,7 +197,6 @@ def mostra_griglia_libri(df_da_mostrare, limite_key, tab_id):
                         
                         url_img = row['Copertina']
                         if pd.notna(url_img) and str(url_img).startswith('http'):
-                            # IMMAGINE HTML (FULMINEA)
                             st.markdown(f"<div style='height: 450px; display: flex; justify-content: center; align-items: center; margin-bottom: 15px;'><img src='{url_img}' style='width: 100%; height: 100%; object-fit: contain;'></div>", unsafe_allow_html=True)
                         else:
                             st.markdown(f"<div style='height: 450px; display: flex; justify-content: center; align-items: center; margin-bottom: 15px; background-color: #f8f9fa; border-radius: 5px;'>🖼️ <i>Nessuna Immagine</i></div>", unsafe_allow_html=True)
@@ -361,10 +360,9 @@ if piattaforma == "🆕 Novità saggistica (30 giorni)":
                     with c1:
                         url = row['Copertina']
                         if pd.notna(url) and str(url).startswith('http'):
-                            # Sostituito st.image con HTML
-                            st.markdown(f"<img src='{url}' style='width: 120px; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>", unsafe_allow_html=True)
+                            st.image(str(url), width=120)
                         else:
-                            st.markdown("<div style='width: 120px; height: 160px; background: #f0f2f6; display: flex; align-items: center; justify-content: center; border-radius: 4px;'>🖼️ No Img</div>", unsafe_allow_html=True)
+                            st.text("🖼️ No Img")
                     with c2:
                         c2_testo, c2_btn = st.columns([4, 1])
                         with c2_testo:
@@ -420,10 +418,7 @@ if piattaforma == "🆕 Novità saggistica (30 giorni)":
                     with c_img:
                         url = row['Copertina']
                         if pd.notna(url) and str(url).startswith('http'):
-                            # Sostituito st.image con HTML
-                            st.markdown(f"<img src='{url}' style='width: 60px; border-radius: 3px;'>", unsafe_allow_html=True)
-                        else:
-                            st.markdown("<div style='width: 60px; height: 90px; background: #f0f2f6; border-radius: 3px;'></div>", unsafe_allow_html=True)
+                            st.image(str(url), width=60)
                     with c_info:
                         badge = "🆕 " if row['Nuovo'] else ""
                         autore_libro = str(row.get('Autore', 'N/D'))
@@ -457,7 +452,7 @@ if piattaforma == "🆕 Novità saggistica (30 giorni)":
                                     "data_scadenza": scadenza
                                 }
                                 aggiungi_reminder_db(link, row['Titolo'], autore_libro, scadenza)
-                        st.rerun()
+                            st.rerun()
                     st.markdown("---")
 
 # ==========================================
@@ -543,20 +538,16 @@ elif piattaforma == "🌍 Mercato Internazionale":
     st.title("🌍 Scouting Internazionale")
     st.caption("Esplora le novità e i bestseller dai principali mercati esteri.")
 
-    # --- INIZIALIZZAZIONE LIMITI PAGINAZIONE ---
-    if 'limite_estero_novita' not in st.session_state: st.session_state.limite_estero_novita = 50
-    if 'limite_estero_best' not in st.session_state: st.session_state.limite_estero_best = 50
-
     # --- SELETTORE MERCATO ---
     mercato_scelto = st.radio(
         "Seleziona il mercato da analizzare:", 
-        ["🇺🇸 USA", "🇫🇷 Francia"],
+        ["🇺🇸 USA (Books-A-Million)", "🇫🇷 Francia (Decitre)"],
         horizontal=True
     )
     
     st.markdown("---")
 
-    file_estero = "dati_internazionali.csv" if "USA" in mercato_scelto else "dati_decitre_scraper.csv"
+    file_estero = "dati_bam_scraper.csv" if "USA" in mercato_scelto else "dati_decitre_scraper.csv"
     df_estero = load_estero_data(file_estero)
 
     if df_estero is None:
@@ -567,13 +558,6 @@ elif piattaforma == "🌍 Mercato Internazionale":
         solo_nuovi_estero = st.sidebar.checkbox("🆕 Mostra solo i nuovi arrivi")
         search_estero = st.sidebar.text_input("🔍 Cerca titolo, autore o editore")
         
-        # Se l'utente fa una nuova ricerca, resettiamo il limite a 50
-        if 'old_search_estero' not in st.session_state: st.session_state.old_search_estero = ""
-        if search_estero != st.session_state.old_search_estero:
-            st.session_state.limite_estero_novita = 50
-            st.session_state.limite_estero_best = 50
-            st.session_state.old_search_estero = search_estero
-
         if solo_nuovi_estero:
             df_estero = df_estero[df_estero['Nuovo'] == True]
             
@@ -586,28 +570,25 @@ elif piattaforma == "🌍 Mercato Internazionale":
 
         tab_novita, tab_bestseller = st.tabs([f"🆕 Novità ({len(df_novita)})", f"🏆 Bestseller ({len(df_bestseller)})"])
 
-        def renderizza_lista_estera(dataframe, limit_key, tab_id):
+        def renderizza_lista_estera(dataframe):
             if dataframe.empty:
                 st.info("Nessun libro da mostrare con i filtri attuali.")
                 return
                 
-            totale_libri = len(dataframe)
-            # Tagliamo il dataframe in base al limite attuale
-            df_mostrato = dataframe.iloc[:st.session_state[limit_key]]
-                
-            for index, row in df_mostrato.iterrows():
+            for index, row in dataframe.iterrows():
                 with st.container(border=True):
+                    # Struttura delle colonne per allineare l'immagine e il blocco principale
                     c_img, c_main = st.columns([1, 6])
                     
                     with c_img:
                         url = row['Copertina']
                         if pd.notna(url) and str(url).startswith('http'):
-                            # Sostituito st.image con HTML per aggirare i firewall!
-                            st.markdown(f"<img src='{url}' style='width: 100%; border-radius: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>", unsafe_allow_html=True)
+                            st.image(str(url), use_container_width=True)
                         else:
                             st.markdown("<div style='text-align:center; padding: 20px; background:#f0f2f6; border-radius:5px;'>No Img</div>", unsafe_allow_html=True)
                             
                     with c_main:
+                        # Colonna principale divisa tra informazioni e pulsanti
                         c_testo, c_azioni = st.columns([5, 1.5])
                         
                         with c_testo:
@@ -619,24 +600,17 @@ elif piattaforma == "🌍 Mercato Internazionale":
                             if pd.notna(link) and str(link).startswith('http'):
                                 st.link_button("🌐 Apri Sito", link, use_container_width=True)
                                 
+                        # Autore ed Editore
                         st.markdown(f"**{row['Autore']}** | *{row['Editore']}*")
                         
+                        # Sinossi a comparsa (larga quanto il blocco principale c_main)
                         desc = str(row.get('Descrizione', ''))
                         if len(desc) > 15 and desc.lower() != "nan" and desc.lower() != "n/d":
                             with st.expander("📖 Leggi sinossi originale"):
                                 st.write(desc)
-            
-            # --- PULSANTE CARICA ALTRI ---
-            if st.session_state[limit_key] < totale_libri:
-                st.markdown("---")
-                c1, c2, c3 = st.columns([1, 2, 1])
-                with c2:
-                    if st.button("⬇️ Carica altri 50 libri", use_container_width=True, key=f"btn_load_{tab_id}"):
-                        st.session_state[limit_key] += 50
-                        st.rerun()
 
         with tab_novita:
-            renderizza_lista_estera(df_novita, 'limite_estero_novita', 'novita_tab')
+            renderizza_lista_estera(df_novita)
             
         with tab_bestseller:
-            renderizza_lista_estera(df_bestseller, 'limite_estero_best', 'best_tab')
+            renderizza_lista_estera(df_bestseller)
