@@ -19,8 +19,83 @@ if sys.stdout.encoding != 'utf-8':
     except AttributeError:
         pass
 
-# Nome del file CSV aggiornato come richiesto
+# Nome del file CSV
 CSV_FILENAME = "dati_internazionali.csv"
+
+# ==========================================
+# 🗽 0. NEW YORK TIMES (BESTSELLERS)
+# ==========================================
+async def get_nyt_bestsellers(tab):
+    print("\n--- 🗽 AVVIO NEW YORK TIMES BEST SELLERS ---")
+    urls_nyt = [
+        ("Hardcover", "https://www.nytimes.com/books/best-sellers/hardcover-nonfiction/"),
+        ("Print & E-Book", "https://www.nytimes.com/books/best-sellers/combined-print-and-e-book-nonfiction/"),
+        ("Advice & Misc", "https://www.nytimes.com/books/best-sellers/advice-how-to-and-miscellaneous/")
+    ]
+    
+    risultati = []
+    titoli_visti = set()
+
+    for nome_cat, url in urls_nyt:
+        print(f"🔍 Scansione NYT: {nome_cat}...")
+        try:
+            await tab.get(url)
+            await asyncio.sleep(4)
+            await tab.evaluate("window.scrollTo(0, document.body.scrollHeight/2);")
+            await asyncio.sleep(1.5)
+
+            html = await tab.get_content()
+            soup = BeautifulSoup(html, 'html.parser')
+
+            # FIX: Solo i tag H3 per evitare la "spazzatura" HTML dei menu!
+            titoli_tags = soup.find_all('h3', itemprop='name')
+
+            for h3 in titoli_tags:
+                titolo = h3.get_text(strip=True).title()
+                
+                if len(titolo) < 2 or titolo.lower() in titoli_visti:
+                    continue
+                
+                titoli_visti.add(titolo.lower())
+                container = h3.find_parent('article') or h3.find_parent('li') or h3.parent.parent
+                
+                autore = "N/D"
+                copertina = "N/D"
+                descrizione = "N/D"
+                editore = "New York Times Bestseller"
+                
+                if container:
+                    a_tag = container.find(itemprop='author')
+                    if a_tag:
+                        autore = re.sub(r'(?i)^by\s*', '', a_tag.get_text(strip=True))
+                    
+                    img_tag = container.find('img', itemprop='image')
+                    if img_tag:
+                        copertina = img_tag.get('src') or "N/D"
+                        
+                    desc_tag = container.find(itemprop='description')
+                    if desc_tag:
+                        descrizione = desc_tag.get_text(strip=True)
+                        
+                    ed_tag = container.find(itemprop='publisher')
+                    if ed_tag:
+                        editore = ed_tag.get_text(strip=True)
+
+                dettagli = {
+                    "Editore": editore,
+                    "Titolo": titolo,
+                    "Autore": autore,
+                    "Descrizione": descrizione,
+                    "Copertina": copertina,
+                    "Link": url # Link sicuro per evitare crash
+                }
+                risultati.append(dettagli)
+                
+        except Exception as e:
+            print(f"⚠️ Errore su {nome_cat}: {e}")
+            
+    print(f"✅ Trovati {len(risultati)} bestseller unici sul New York Times.")
+    return risultati
 
 # ==========================================
 # 🐧 1. PENGUIN RANDOM HOUSE
@@ -51,7 +126,6 @@ async def get_penguin_releases(tab):
     
     risultati = []
     for link in urls_da_visitare:
-        print(f"  [Penguin] 📖 {link}")
         try:
             await tab.get(link)
             await asyncio.sleep(random.uniform(2.0, 3.5))
@@ -68,15 +142,18 @@ async def get_penguin_releases(tab):
                 testo_autore = h2.get_text(strip=True)
                 dettagli["Autore"] = re.sub(r'(?i)^by\s*', '', testo_autore).strip()
                 
-            desc_div = soup.find('div', id='book-description-copy')
+            # FIX PENGUIN: Ricerca estesa per la sinossi
+            desc_div = soup.find('div', id='book-description-copy') or soup.find(class_=re.compile(r'book-description', re.I))
             if desc_div:
                 for btn in desc_div.find_all(['button', 'a']): btn.decompose()
                 dettagli["Descrizione"] = desc_div.get_text(separator=' ', strip=True)
                 
-            img_tag = soup.find('img', class_=re.compile(r'responsive_img', re.I))
+            # FIX PENGUIN: Ricerca estesa per intercettare i nuovi id/classi delle copertine
+            img_tag = soup.find('img', id='coverFormat') or soup.find('img', class_=re.compile(r'responsive_img|img-responsive', re.I))
             if img_tag:
                 src = img_tag.get('src') or img_tag.get('data-src') or ""
-                dettagli["Copertina"] = src if src.startswith('http') else "https:" + src
+                if src:
+                    dettagli["Copertina"] = src if src.startswith('http') else "https:" + src
                 
             risultati.append(dettagli)
         except:
@@ -113,7 +190,6 @@ async def get_harper_releases(tab):
     
     risultati = []
     for link in urls_pagina:
-        print(f"  [Harper] 📖 {link}")
         try:
             await tab.get(link)
             await asyncio.sleep(random.uniform(2.5, 4.0)) 
@@ -177,7 +253,6 @@ async def get_simon_releases(tab):
     
     risultati = []
     for libro in libri_trovati:
-        print(f"  [S&S] 📖 {libro['Link']}")
         try:
             await tab.get(libro['Link'])
             await asyncio.sleep(random.uniform(2.5, 4.0))
@@ -234,7 +309,6 @@ async def get_macmillan_releases(tab):
     
     risultati = []
     for libro in libri_trovati:
-        print(f"  [Macmillan] 📖 {libro['Link']}")
         try:
             await tab.get(libro['Link'])
             await asyncio.sleep(random.uniform(2.5, 4.0))
@@ -297,7 +371,6 @@ async def get_hachette_releases(tab):
     
     risultati = []
     for link in urls_visti:
-        print(f"  [Hachette] 📖 {link}")
         try:
             await tab.get(link)
             await asyncio.sleep(random.uniform(2.5, 4.0))
@@ -333,10 +406,10 @@ async def get_hachette_releases(tab):
 # ==========================================
 # 💾 SINCRONIZZATORE CSV (Internazionale)
 # ==========================================
-def sincronizza_csv_editore(nuovi_dati, nome_editore):
+def sincronizza_csv_editore(nuovi_dati, nome_editore, categoria_default='Novità'):
     """
     Sostituisce i titoli dell'editore rimuovendo quelli non più presenti.
-    Mantiene la data di aggiunta originale per i titoli che restano.
+    Permette di differenziare la categoria tra 'Novità' e 'Bestseller'.
     """
     if not nuovi_dati:
         print(f"⚠️ Nessun dato corrente per {nome_editore}. Salto sincronizzazione.")
@@ -344,17 +417,27 @@ def sincronizza_csv_editore(nuovi_dati, nome_editore):
 
     oggi_str = datetime.now().date().isoformat()
     df_nuovi = pd.DataFrame(nuovi_dati)
-    df_nuovi['Categoria'] = 'Novità'
+    df_nuovi['Categoria'] = categoria_default
 
     if os.path.exists(CSV_FILENAME):
         df_vecchio = pd.read_csv(CSV_FILENAME)
-        df_altri = df_vecchio[df_vecchio['Editore'] != nome_editore]
-        df_vecchio_editore = df_vecchio[df_vecchio['Editore'] == nome_editore]
         
-        date_storiche = dict(zip(df_vecchio_editore['Link'], df_vecchio_editore['Data_Aggiunta']))
+        if 'Editore' in df_vecchio.columns:
+            if nome_editore == "NYT":
+                df_altri = df_vecchio[df_vecchio['Editore'] != "New York Times Bestseller"]
+                df_vecchio_editore = df_vecchio[df_vecchio['Editore'] == "New York Times Bestseller"]
+            else:
+                df_altri = df_vecchio[df_vecchio['Editore'] != nome_editore]
+                df_vecchio_editore = df_vecchio[df_vecchio['Editore'] == nome_editore]
+        else:
+            df_altri = pd.DataFrame()
+            df_vecchio_editore = df_vecchio.copy()
+            
+        chiave_check = 'Titolo' if nome_editore == "NYT" else 'Link'
+        date_storiche = dict(zip(df_vecchio_editore[chiave_check], df_vecchio_editore['Data_Aggiunta']))
         
-        df_nuovi['Data_Aggiunta'] = df_nuovi['Link'].apply(lambda x: date_storiche.get(x, oggi_str))
-        df_nuovi['Nuovo'] = df_nuovi['Link'].apply(lambda x: False if x in date_storiche else True)
+        df_nuovi['Data_Aggiunta'] = df_nuovi[chiave_check].apply(lambda x: date_storiche.get(x, oggi_str))
+        df_nuovi['Nuovo'] = df_nuovi[chiave_check].apply(lambda x: False if x in date_storiche else True)
         
         df_completo = pd.concat([df_altri, df_nuovi], ignore_index=True)
     else:
@@ -366,23 +449,27 @@ def sincronizza_csv_editore(nuovi_dati, nome_editore):
     esistenti = [c for c in cols if c in df_completo.columns]
     df_completo = df_completo[esistenti]
     df_completo.to_csv(CSV_FILENAME, index=False)
-    print(f"🔄 Database '{CSV_FILENAME}' aggiornato per {nome_editore}.")
+    
+    nome_print = "New York Times Bestsellers" if nome_editore == "NYT" else nome_editore
+    print(f"🔄 Database aggiornato per {nome_print}.")
 
 async def main():
     cartella_temporanea = tempfile.mkdtemp()
-    print(f"🚀 Avvio Scraper Internazionale (Modalità GitHub Actions)...")
+    print(f"🚀 Avvio Scraper Internazionale Integrato...")
     
-    # MODIFICATO headless=True PER L'ESECUZIONE SU SERVER
     browser = await uc.start(
-        headless=True, 
-        no_sandbox=True, 
+        headless=True, no_sandbox=True, 
         user_data_dir=cartella_temporanea,
         browser_args=['--disable-dev-shm-usage', '--disable-gpu']
     )
     tab = browser.main_tab 
     
     try:
-        # Sequenza sincronizzazione Big 5
+        # 1. NYT Bestsellers
+        risultati_nyt = await get_nyt_bestsellers(tab)
+        sincronizza_csv_editore(risultati_nyt, "NYT", categoria_default="Bestseller")
+        
+        # 2. Big 5 Editori
         sincronizza_csv_editore(await get_penguin_releases(tab), "Penguin Random House")
         sincronizza_csv_editore(await get_harper_releases(tab), "HarperCollins")
         sincronizza_csv_editore(await get_simon_releases(tab), "Simon & Schuster")
@@ -401,6 +488,3 @@ if __name__ == "__main__":
         uc.loop().run_until_complete(main())
     except Exception as e:
         print(f"❌ Errore avvio: {e}")
-    finally:
-        # RIMOSSO l'input() finale
-        print("\nFine operazioni. Script terminato.")
