@@ -246,6 +246,9 @@ st.sidebar.markdown("---")
 if piattaforma == "🆕 Novità saggistica (30 giorni)":
     st.title("📚 Novità Saggistica")
 
+    if 'limite_ibs_vip' not in st.session_state: st.session_state.limite_ibs_vip = 20
+    if 'limite_ibs_altri' not in st.session_state: st.session_state.limite_ibs_altri = 20
+
     file_name = "dati_per_app.csv"
     df_ibs = load_ibs_data(file_name)
 
@@ -265,7 +268,13 @@ if piattaforma == "🆕 Novità saggistica (30 giorni)":
         df_altri = df_ibs[df_ibs['Categoria_App'] != 'Editori Selezionati'].copy()
 
         solo_nuovi = st.sidebar.checkbox("🆕 Mostra solo le nuove uscite")
-        search_query = st.sidebar.text_input("🔍 Cerca libro o autore", help="Cerca in entrambe le liste")
+        search_query = st.sidebar.text_input("🔍 Cerca libro o autore")
+
+        if 'old_search_ibs' not in st.session_state: st.session_state.old_search_ibs = ""
+        if search_query != st.session_state.old_search_ibs:
+            st.session_state.limite_ibs_vip = 20
+            st.session_state.limite_ibs_altri = 20
+            st.session_state.old_search_ibs = search_query
 
         st.sidebar.subheader("Filtra Selezionati")
         editori_disponibili = sorted(df_vip['Editore'].unique())
@@ -279,14 +288,12 @@ if piattaforma == "🆕 Novità saggistica (30 giorni)":
 
         st.sidebar.markdown("---")
         num_reminders = len(st.session_state.reminders)
-        
         with st.sidebar.expander(f"⏰ Libri in monitoraggio ({num_reminders})"):
             if num_reminders == 0:
                 st.caption("Nessun libro in monitoraggio.")
             else:
                 oggi = datetime.date.today()
                 sorted_rems = sorted(st.session_state.reminders.items(), key=lambda x: x[1]['data_scadenza'])
-                
                 for r_id, r_data in sorted_rems:
                     try:
                         scadenza = datetime.date.fromisoformat(r_data["data_scadenza"])
@@ -304,7 +311,6 @@ if piattaforma == "🆕 Novità saggistica (30 giorni)":
                         
                     st.markdown(f"**{r_data['titolo']}**<br><span style='font-size:0.85em; color:gray;'>di {r_data['autore']}</span>", unsafe_allow_html=True)
                     st.caption(f"{status} (Scadenza: {scadenza.strftime('%d/%m/%Y')})")
-                    
                     if st.button("🗑️ Rimuovi", key=f"del_rem_{hash(r_id)}", use_container_width=True):
                         del st.session_state.reminders[r_id]
                         rimuovi_reminder_db(r_id)
@@ -317,11 +323,9 @@ if piattaforma == "🆕 Novità saggistica (30 giorni)":
 
         if search_query:
             if not df_vip.empty:
-                mask_vip = df_vip.astype(str).apply(lambda x: x.str.contains(search_query, case=False)).any(axis=1)
-                df_vip = df_vip[mask_vip]
+                df_vip = df_vip[df_vip.astype(str).apply(lambda x: x.str.contains(search_query, case=False)).any(axis=1)]
             if not df_altri.empty:
-                mask_altri = df_altri.astype(str).apply(lambda x: x.str.contains(search_query, case=False)).any(axis=1)
-                df_altri = df_altri[mask_altri]
+                df_altri = df_altri[df_altri.astype(str).apply(lambda x: x.str.contains(search_query, case=False)).any(axis=1)]
 
         if sel_editore:
             df_vip = df_vip[df_vip['Editore'].isin(sel_editore)]
@@ -337,30 +341,85 @@ if piattaforma == "🆕 Novità saggistica (30 giorni)":
         with tab1:
             if df_vip.empty:
                 st.info("Nessun libro trovato con i filtri attuali.")
-            for index, row in df_vip.iterrows():
-                with st.container():
-                    c1, c2 = st.columns([1, 5])
-                    with c1:
-                        url = row['Copertina']
-                        if pd.notna(url) and str(url).startswith('http'):
-                            st.image(str(url), width=120)
-                        else:
-                            st.text("🖼️ No Img")
-                    with c2:
-                        c2_testo, c2_btn = st.columns([4, 1])
-                        with c2_testo:
+            else:
+                df_vip_mostrato = df_vip.iloc[:st.session_state.limite_ibs_vip]
+                for index, row in df_vip_mostrato.iterrows():
+                    with st.container():
+                        c1, c2 = st.columns([1, 5])
+                        with c1:
+                            url = row['Copertina']
+                            if pd.notna(url) and str(url).startswith('http'):
+                                st.markdown(f"<img src='{url}' style='width: 120px; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>", unsafe_allow_html=True)
+                            else:
+                                st.markdown("<div style='width: 120px; height: 160px; background: #f0f2f6; display: flex; align-items: center; justify-content: center; border-radius: 4px;'>🖼️ No Img</div>", unsafe_allow_html=True)
+                        with c2:
+                            c2_testo, c2_btn = st.columns([4, 1])
+                            with c2_testo:
+                                badge = "🆕 " if row['Nuovo'] else ""
+                                st.subheader(f"{badge}{row['Titolo']}")
+                            with c2_btn:
+                                link = row.get('Link')
+                                autore_libro = str(row.get('Autore', 'N/D'))
+                                is_reminded = link in st.session_state.reminders
+                                btn_label = "✅ Seguito" if is_reminded else "🕒 Monitora"
+                                btn_type = "primary" if is_reminded else "secondary"
+                                
+                                if st.button(btn_label, key=f"rem_vip_{index}", use_container_width=True):
+                                    if is_reminded:
+                                        del st.session_state.reminders[link]
+                                        rimuovi_reminder_db(link)
+                                    else:
+                                        data_base = datetime.date.today()
+                                        if 'Data_Aggiunta' in row and pd.notna(row['Data_Aggiunta']):
+                                            try: data_base = datetime.date.fromisoformat(str(row['Data_Aggiunta']))
+                                            except: pass
+                                        scadenza = (data_base + datetime.timedelta(days=30)).isoformat()
+                                        st.session_state.reminders[link] = {"titolo": row['Titolo'], "autore": autore_libro, "data_scadenza": scadenza}
+                                        aggiungi_reminder_db(link, row['Titolo'], autore_libro, scadenza)
+                                    st.rerun()
+
+                            st.markdown(f"**{autore_libro}** | *{row.get('Editore', 'N/D')}* ({row.get('Anno', '')})")
+                            desc = str(row.get('Descrizione', ''))
+                            if len(desc) > 10 and desc.lower() != "nan":
+                                with st.expander("📖 Leggi sinossi"):
+                                    st.write(desc)
+                            if pd.notna(link) and str(link).startswith('http'):
+                                st.markdown(f"[➡️ Vedi su IBS]({link})")
+                        st.divider()
+
+                if st.session_state.limite_ibs_vip < len(df_vip):
+                    if st.button("⬇️ Carica altri 20 libri", use_container_width=True, key="load_more_ibs_vip"):
+                        st.session_state.limite_ibs_vip += 20
+                        st.rerun()
+
+        with tab2:
+            st.caption("Libri di altri editori (lista standard).")
+            if df_altri.empty:
+                st.info("Nessun libro in questa categoria.")
+            else:
+                df_altri_mostrato = df_altri.iloc[:st.session_state.limite_ibs_altri]
+                for index, row in df_altri_mostrato.iterrows():
+                    with st.container():
+                        c_img, c_info, c_btn2 = st.columns([0.5, 4, 1])
+                        with c_img:
+                            url = row['Copertina']
+                            if pd.notna(url) and str(url).startswith('http'):
+                                st.markdown(f"<img src='{url}' style='width: 60px; border-radius: 3px;'>", unsafe_allow_html=True)
+                            else:
+                                st.markdown("<div style='width: 60px; height: 90px; background: #f0f2f6; border-radius: 3px;'></div>", unsafe_allow_html=True)
+                        with c_info:
                             badge = "🆕 " if row['Nuovo'] else ""
-                            st.subheader(f"{badge}{row['Titolo']}")
-                        
-                        with c2_btn:
-                            link = row.get('Link')
                             autore_libro = str(row.get('Autore', 'N/D'))
-                            is_reminded = link in st.session_state.reminders
-                            btn_label = "✅ Seguito" if is_reminded else "🕒 Monitora"
-                            btn_type = "primary" if is_reminded else "secondary"
-                            
-                            if st.button(btn_label, key=f"rem_vip_{index}", use_container_width=True):
-                                if is_reminded:
+                            st.markdown(f"{badge}**{row['Titolo']}**")
+                            st.markdown(f"{autore_libro} - *{row.get('Editore', 'N/D')}*")
+                            link = row.get('Link')
+                            if pd.notna(link) and str(link).startswith('http'):
+                                st.markdown(f"[Link]({link})")
+                        with c_btn2:
+                            is_reminded2 = link in st.session_state.reminders
+                            btn_label2 = "✅ Seguito" if is_reminded2 else "🕒 Monitora"
+                            if st.button(btn_label2, key=f"rem_altri_{index}", use_container_width=True):
+                                if is_reminded2:
                                     del st.session_state.reminders[link]
                                     rimuovi_reminder_db(link)
                                 else:
@@ -368,59 +427,16 @@ if piattaforma == "🆕 Novità saggistica (30 giorni)":
                                     if 'Data_Aggiunta' in row and pd.notna(row['Data_Aggiunta']):
                                         try: data_base = datetime.date.fromisoformat(str(row['Data_Aggiunta']))
                                         except: pass
-                                        
                                     scadenza = (data_base + datetime.timedelta(days=30)).isoformat()
                                     st.session_state.reminders[link] = {"titolo": row['Titolo'], "autore": autore_libro, "data_scadenza": scadenza}
                                     aggiungi_reminder_db(link, row['Titolo'], autore_libro, scadenza)
                                 st.rerun()
+                        st.markdown("---")
 
-                        st.markdown(f"**{autore_libro}** | *{row.get('Editore', 'N/D')}* ({row.get('Anno', '')})")
-                        desc = str(row.get('Descrizione', ''))
-                        if len(desc) > 10 and desc.lower() != "nan":
-                            with st.expander("📖 Leggi sinossi"):
-                                st.write(desc)
-                        if pd.notna(link) and str(link).startswith('http'):
-                            st.markdown(f"[➡️ Vedi su IBS]({link})")
-                    st.divider()
-
-        with tab2:
-            st.caption("Libri di altri editori (lista standard).")
-            if df_altri.empty:
-                st.info("Nessun libro in questa categoria.")
-            for index, row in df_altri.iterrows():
-                with st.container():
-                    c_img, c_info, c_btn2 = st.columns([0.5, 4, 1])
-                    with c_img:
-                        url = row['Copertina']
-                        if pd.notna(url) and str(url).startswith('http'):
-                            st.image(str(url), width=60)
-                    with c_info:
-                        badge = "🆕 " if row['Nuovo'] else ""
-                        autore_libro = str(row.get('Autore', 'N/D'))
-                        st.markdown(f"{badge}**{row['Titolo']}**")
-                        st.markdown(f"{autore_libro} - *{row.get('Editore', 'N/D')}*")
-                        link = row.get('Link')
-                        if pd.notna(link) and str(link).startswith('http'):
-                            st.markdown(f"[Link]({link})")
-                    
-                    with c_btn2:
-                        is_reminded2 = link in st.session_state.reminders
-                        btn_label2 = "✅ Seguito" if is_reminded2 else "🕒 Monitora"
-                        if st.button(btn_label2, key=f"rem_altri_{index}", use_container_width=True):
-                            if is_reminded2:
-                                del st.session_state.reminders[link]
-                                rimuovi_reminder_db(link)
-                            else:
-                                data_base = datetime.date.today()
-                                if 'Data_Aggiunta' in row and pd.notna(row['Data_Aggiunta']):
-                                    try: data_base = datetime.date.fromisoformat(str(row['Data_Aggiunta']))
-                                    except: pass
-                                    
-                                scadenza = (data_base + datetime.timedelta(days=30)).isoformat()
-                                st.session_state.reminders[link] = {"titolo": row['Titolo'], "autore": autore_libro, "data_scadenza": scadenza}
-                                aggiungi_reminder_db(link, row['Titolo'], autore_libro, scadenza)
+                if st.session_state.limite_ibs_altri < len(df_altri):
+                    if st.button("⬇️ Carica altri 20 libri", use_container_width=True, key="load_more_ibs_altri"):
+                        st.session_state.limite_ibs_altri += 20
                         st.rerun()
-                    st.markdown("---")
 
 # ==========================================
 # SEZIONE 2: SCOUTING AMAZON
@@ -443,8 +459,8 @@ elif piattaforma == "🔍 Scouting Amazon":
 
     st.sidebar.markdown("---")
 
-    if 'limite_libri_amz_top' not in st.session_state: st.session_state.limite_libri_amz_top = 150
-    if 'limite_libri_amz_pot' not in st.session_state: st.session_state.limite_libri_amz_pot = 150
+    if 'limite_libri_amz_top' not in st.session_state: st.session_state.limite_libri_amz_top = 20
+    if 'limite_libri_amz_pot' not in st.session_state: st.session_state.limite_libri_amz_pot = 20
     if 'filtro_cat_amz' not in st.session_state: st.session_state.filtro_cat_amz = "Tutte"
     if 'filtro_rec_amz' not in st.session_state: st.session_state.filtro_rec_amz = 35 
     if 'filtro_ord_amz' not in st.session_state: st.session_state.filtro_ord_amz = "Decrescente (Più recensioni)"
@@ -465,8 +481,8 @@ elif piattaforma == "🔍 Scouting Amazon":
 
         if (sel_cat_amz != st.session_state.filtro_cat_amz or min_rec_amz != st.session_state.filtro_rec_amz or 
             ord_amz != st.session_state.filtro_ord_amz or mostra_salvati_amz != st.session_state.filtro_salvati_amz):
-            st.session_state.limite_libri_amz_top = 150
-            st.session_state.limite_libri_amz_pot = 150
+            st.session_state.limite_libri_amz_top = 20
+            st.session_state.limite_libri_amz_pot = 20
             st.session_state.filtro_cat_amz = sel_cat_amz
             st.session_state.filtro_rec_amz = min_rec_amz
             st.session_state.filtro_ord_amz = ord_amz
@@ -483,13 +499,14 @@ elif piattaforma == "🔍 Scouting Amazon":
         df_potenziale = df_filtrato[df_filtrato['Recensioni'] < 60]
 
         tab_top, tab_potenziale = st.tabs([f"🌟 Più recensioni ({len(df_top)})", f"🚀 Libri con potenziale ({len(df_potenziale)})"])
+
         with tab_top: mostra_griglia_libri(df_top, 'limite_libri_amz_top', 'top')
         with tab_potenziale:
             st.caption("Libri recenti con un numero di recensioni tra 35 e 59.")
             mostra_griglia_libri(df_potenziale, 'limite_libri_amz_pot', 'pot')
 
 # ==========================================
-# SEZIONE 3: MERCATO INTERNAZIONALE (TEST ABLAZIONE - SOLO USA)
+# SEZIONE 3: MERCATO INTERNAZIONALE (TEST ABLAZIONE)
 # ==========================================
 elif piattaforma == "🌍 Mercato Internazionale":
     st.title("🌍 Scouting Internazionale")
@@ -498,17 +515,20 @@ elif piattaforma == "🌍 Mercato Internazionale":
     if 'limite_estero_novita' not in st.session_state: st.session_state.limite_estero_novita = 20
     if 'limite_estero_best' not in st.session_state: st.session_state.limite_estero_best = 20
 
-    # DISATTIVATA LA FRANCIA PER CAPIRE SE IL BUG È Lì
-    mercato_scelto = st.radio("Seleziona il mercato da analizzare:", ["🇺🇸 USA"], horizontal=True)
+    # TEST: Rimosso temporaneamente il NYT per isolare il problema
+    mercato_scelto = st.radio("Seleziona il mercato da analizzare:", ["🇺🇸 USA (Solo Big 5)", "🇫🇷 Francia"], horizontal=True)
     st.markdown("---")
 
-    # FORZIAMO IL CARICAMENTO DEL FILE AMERICANO
-    file_estero = "dati_internazionali.csv"
+    file_estero = "dati_internazionali.csv" if "USA" in mercato_scelto else "dati_decitre_scraper.csv"
     df_estero = load_estero_data(file_estero)
 
     if df_estero is None:
         st.warning(f"⚠️ Dati per {mercato_scelto} non trovati. Assicurati che lo scraper abbia generato il file '{file_estero}'.")
     else:
+        # SE SIAMO IN USA, ELIMINIAMO I BESTSELLER (NYT)
+        if "USA" in mercato_scelto:
+            df_estero = df_estero[df_estero['Categoria'] != 'Bestseller']
+
         st.sidebar.header("Filtri Internazionali")
         solo_nuovi_estero = st.sidebar.checkbox("🆕 Mostra solo i nuovi arrivi")
         search_estero = st.sidebar.text_input("🔍 Cerca titolo, autore o editore")
@@ -537,7 +557,6 @@ elif piattaforma == "🌍 Mercato Internazionale":
                 
             for index, row in df_mostrato.iterrows():
                 with st.container(border=True):
-                    # Usiamo proporzioni di colonne standard e rodate
                     c_img, c_main = st.columns([1, 4])
                     with c_img:
                         url = row['Copertina']
