@@ -197,6 +197,7 @@ def mostra_griglia_libri(df_da_mostrare, limite_key, tab_id):
                         
                         url_img = row['Copertina']
                         if pd.notna(url_img) and str(url_img).startswith('http'):
+                            # IMMAGINE HTML (FULMINEA)
                             st.markdown(f"<div style='height: 450px; display: flex; justify-content: center; align-items: center; margin-bottom: 15px;'><img src='{url_img}' style='width: 100%; height: 100%; object-fit: contain;'></div>", unsafe_allow_html=True)
                         else:
                             st.markdown(f"<div style='height: 450px; display: flex; justify-content: center; align-items: center; margin-bottom: 15px; background-color: #f8f9fa; border-radius: 5px;'>🖼️ <i>Nessuna Immagine</i></div>", unsafe_allow_html=True)
@@ -360,9 +361,10 @@ if piattaforma == "🆕 Novità saggistica (30 giorni)":
                     with c1:
                         url = row['Copertina']
                         if pd.notna(url) and str(url).startswith('http'):
-                            st.image(str(url), width=120)
+                            # Sostituito st.image con HTML
+                            st.markdown(f"<img src='{url}' style='width: 120px; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>", unsafe_allow_html=True)
                         else:
-                            st.text("🖼️ No Img")
+                            st.markdown("<div style='width: 120px; height: 160px; background: #f0f2f6; display: flex; align-items: center; justify-content: center; border-radius: 4px;'>🖼️ No Img</div>", unsafe_allow_html=True)
                     with c2:
                         c2_testo, c2_btn = st.columns([4, 1])
                         with c2_testo:
@@ -418,7 +420,10 @@ if piattaforma == "🆕 Novità saggistica (30 giorni)":
                     with c_img:
                         url = row['Copertina']
                         if pd.notna(url) and str(url).startswith('http'):
-                            st.image(str(url), width=60)
+                            # Sostituito st.image con HTML
+                            st.markdown(f"<img src='{url}' style='width: 60px; border-radius: 3px;'>", unsafe_allow_html=True)
+                        else:
+                            st.markdown("<div style='width: 60px; height: 90px; background: #f0f2f6; border-radius: 3px;'></div>", unsafe_allow_html=True)
                     with c_info:
                         badge = "🆕 " if row['Nuovo'] else ""
                         autore_libro = str(row.get('Autore', 'N/D'))
@@ -597,7 +602,8 @@ elif piattaforma == "🌍 Mercato Internazionale":
                     with c_img:
                         url = row['Copertina']
                         if pd.notna(url) and str(url).startswith('http'):
-                            st.image(str(url), use_container_width=True)
+                            # Sostituito st.image con HTML per aggirare i firewall!
+                            st.markdown(f"<img src='{url}' style='width: 100%; border-radius: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>", unsafe_allow_html=True)
                         else:
                             st.markdown("<div style='text-align:center; padding: 20px; background:#f0f2f6; border-radius:5px;'>No Img</div>", unsafe_allow_html=True)
                             
