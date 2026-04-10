@@ -19,7 +19,7 @@ if sys.stdout.encoding != 'utf-8':
     except AttributeError:
         pass
 
-# Nome del file CSV
+# Nome del file CSV unico
 CSV_FILENAME = "dati_internazionali.csv"
 
 # ==========================================
@@ -87,7 +87,7 @@ async def get_nyt_bestsellers(tab):
                     "Autore": autore,
                     "Descrizione": descrizione,
                     "Copertina": copertina,
-                    "Link": url # Link sicuro per evitare crash
+                    "Link": url 
                 }
                 risultati.append(dettagli)
                 
@@ -142,13 +142,11 @@ async def get_penguin_releases(tab):
                 testo_autore = h2.get_text(strip=True)
                 dettagli["Autore"] = re.sub(r'(?i)^by\s*', '', testo_autore).strip()
                 
-            # FIX PENGUIN: Ricerca estesa per la sinossi
             desc_div = soup.find('div', id='book-description-copy') or soup.find(class_=re.compile(r'book-description', re.I))
             if desc_div:
                 for btn in desc_div.find_all(['button', 'a']): btn.decompose()
                 dettagli["Descrizione"] = desc_div.get_text(separator=' ', strip=True)
                 
-            # FIX PENGUIN: Ricerca estesa per intercettare i nuovi id/classi delle copertine
             img_tag = soup.find('img', id='coverFormat') or soup.find('img', class_=re.compile(r'responsive_img|img-responsive', re.I))
             if img_tag:
                 src = img_tag.get('src') or img_tag.get('data-src') or ""
@@ -407,10 +405,6 @@ async def get_hachette_releases(tab):
 # 💾 SINCRONIZZATORE CSV (Internazionale)
 # ==========================================
 def sincronizza_csv_editore(nuovi_dati, nome_editore, categoria_default='Novità'):
-    """
-    Sostituisce i titoli dell'editore rimuovendo quelli non più presenti.
-    Permette di differenziare la categoria tra 'Novità' e 'Bestseller'.
-    """
     if not nuovi_dati:
         print(f"⚠️ Nessun dato corrente per {nome_editore}. Salto sincronizzazione.")
         return
@@ -453,18 +447,23 @@ def sincronizza_csv_editore(nuovi_dati, nome_editore, categoria_default='Novità
     nome_print = "New York Times Bestsellers" if nome_editore == "NYT" else nome_editore
     print(f"🔄 Database aggiornato per {nome_print}.")
 
+# ==========================================
+# 🚀 FUNZIONE MAIN
+# ==========================================
 async def main():
     cartella_temporanea = tempfile.mkdtemp()
     print(f"🚀 Avvio Scraper Internazionale Integrato...")
     
-    browser = await uc.start(
-        headless=True, no_sandbox=True, 
-        user_data_dir=cartella_temporanea,
-        browser_args=['--disable-dev-shm-usage', '--disable-gpu']
-    )
-    tab = browser.main_tab 
-    
     try:
+        # FIX DEFINITIVO PER GITHUB ACTIONS (ROOT/SANDBOX)
+        browser = await uc.start(
+            headless=True, 
+            no_sandbox=True, 
+            user_data_dir=cartella_temporanea,
+            browser_args=['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
+        )
+        tab = browser.main_tab 
+        
         # 1. NYT Bestsellers
         risultati_nyt = await get_nyt_bestsellers(tab)
         sincronizza_csv_editore(risultati_nyt, "NYT", categoria_default="Bestseller")
@@ -479,7 +478,10 @@ async def main():
     except Exception as e:
         print(f"⚠️ Errore critico: {e}")
     finally:
-        browser.stop()
+        try:
+            browser.stop()
+        except:
+            pass
         
     print(f"\n✅ Sincronizzazione conclusa. File pronto: {CSV_FILENAME}")
 
