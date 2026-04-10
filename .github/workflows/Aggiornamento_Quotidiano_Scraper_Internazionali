@@ -2,8 +2,8 @@ name: Aggiornamento Quotidiano Scraper Internazionali
 
 on:
   schedule:
-    # Esegue lo script ogni giorno alle 03:00 UTC (4:00 italiane)
-    - cron: '0 3 * * *'
+    # Esegue lo script ogni giorno alle 04:00 UTC (5:00 italiane GMT+1)
+    - cron: '0 4 * * *'
   workflow_dispatch: # Permette anche l'avvio manuale cliccando "Run workflow" su GitHub
 
 jobs:
@@ -24,11 +24,8 @@ jobs:
         python -m pip install --upgrade pip
         pip install pandas beautifulsoup4 nodriver
 
-    - name: Esecuzione Scraper Internazionali
+    - name: Esecuzione Scraper Internazionali (Include Big 5 + NYT)
       run: python scraper_internazionali.py
-
-    - name: Esecuzione Scraper NYT Bestsellers
-      run: python scraper_nyt.py
 
     - name: Esecuzione Scraper Decitre
       run: python scraper_decitre.py
