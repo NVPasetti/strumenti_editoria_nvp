@@ -217,11 +217,11 @@ async def main():
     else:
         print("🌱 Nessun archivio trovato. Verrà creato un database francese oggi.")
 
-    # FIX: Usiamo HEADLESS=FALSE insieme a Xvfb nello YAML per ingannare i controlli antibot
+    # FIX: no_sandbox=True per server root (GitHub Actions)
     browser = await uc.start(
         headless=False, 
+        no_sandbox=True,
         browser_args=[
-            '--no-sandbox', 
             '--disable-dev-shm-usage', 
             '--disable-gpu',
             '--window-size=1920,1080'
@@ -280,7 +280,10 @@ async def main():
     except Exception as e:
         print(f"\nErrore inaspettato: {e}")
     finally:
-        browser.stop()
+        try:
+            browser.stop()
+        except:
+            pass
 
     print(f"\n🎉 OPERAZIONE CONCLUSA. {nuovi_estratti_totali} NUOVI libri aggiunti oggi!")
 
