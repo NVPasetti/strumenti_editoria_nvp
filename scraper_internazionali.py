@@ -451,21 +451,19 @@ def sincronizza_csv_editore(nuovi_dati, nome_editore, categoria_default='Novità
 # 🚀 FUNZIONE MAIN
 # ==========================================
 async def main():
-    cartella_temporanea = tempfile.mkdtemp()
     print(f"🚀 Avvio Scraper Internazionale Integrato...")
     
     try:
-        # FIX DEFINITIVO: Forza il Chrome di sistema e disabilita setuid-sandbox
+        # FIX PER GITHUB ACTIONS: Headless True + Disabilitazione totale Sandbox
         browser = await uc.start(
-            headless=False, 
-            browser_executable_path='/usr/bin/google-chrome',
-            user_data_dir=cartella_temporanea,
+            headless=True, 
             browser_args=[
                 '--no-sandbox', 
                 '--disable-setuid-sandbox',
                 '--disable-dev-shm-usage', 
                 '--disable-gpu',
-                '--window-size=1920,1080'
+                '--window-size=1920,1080',
+                '--disable-blink-features=AutomationControlled'
             ]
         )
         tab = browser.main_tab 
