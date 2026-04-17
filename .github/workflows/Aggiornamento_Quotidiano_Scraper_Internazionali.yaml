@@ -1,16 +1,4 @@
-name: Aggiornamento Quotidiano Scraper Internazionali
-
-on:
-  schedule:
-    # Esegue lo script ogni giorno alle 04:00 UTC (5:00 italiane GMT+1)
-    - cron: '0 4 * * *'
-  workflow_dispatch: # Permette anche l'avvio manuale cliccando "Run workflow" su GitHub
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-
-    steps:
+steps:
     - name: Checkout del codice
       uses: actions/checkout@v4
 
@@ -19,22 +7,26 @@ jobs:
       with:
         python-version: '3.11'
 
-    - name: Installazione dipendenze
+    - name: Installazione dipendenze Python
       run: |
         python -m pip install --upgrade pip
         pip install pandas beautifulsoup4 nodriver
 
+    - name: Installazione Display Virtuale (Xvfb)
+      run: sudo apt-get update && sudo apt-get install -y xvfb
+
     - name: Esecuzione Scraper Internazionali (Include Big 5 + NYT)
-      run: python scraper_internazionali.py
+      # Avviamo lo script dentro il display virtuale
+      run: xvfb-run --auto-servernum python scraper_internazionali.py
 
     - name: Esecuzione Scraper Decitre
-      run: python scraper_decitre.py
+      # Anche Decitre usa nodriver, applichiamo lo stesso trucco preventivamente
+      run: xvfb-run --auto-servernum python scraper_decitre.py
 
     - name: Commit e Push dei risultati
       run: |
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
         git add dati_internazionali.csv dati_decitre_scraper.csv
-        # Il comando || exit 0 serve a non far fallire l'azione se non ci sono modifiche nei CSV
         git commit -m "Aggiornamento automatico dati: $(date +'%Y-%m-%d')" || exit 0
         git push
