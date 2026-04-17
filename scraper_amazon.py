@@ -4,6 +4,7 @@ import os
 import pandas as pd
 import re
 import random
+from datetime import datetime, timedelta
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
@@ -12,8 +13,8 @@ from webdriver_manager.chrome import ChromeDriverManager
 from bs4 import BeautifulSoup
 
 # --- CONFIGURAZIONE ---
-NUM_PAGINE_PER_CATEGORIA = 100  # Abbassato a 100 per velocizzare
-OUTPUT_FILE = "amazon_libri_multicat.csv" # Nome del file di salvataggio
+NUM_PAGINE_PER_CATEGORIA = 100 
+OUTPUT_FILE = "amazon_libri_multicat.csv" 
 
 # --- DEFINIZIONE CATEGORIE ---
 CATEGORIES = [
@@ -102,45 +103,49 @@ def is_multiple_author(author_text):
     return False
 
 def extract_date(text):
+    """Estrae la stringa della data dal testo, supportando formati lunghi o corti"""
     if not text: return ""
-    match = re.search(r'(\d{1,2}\s+[a-zA-Z]{3}\.?\s+\d{4})', text)
+    match = re.search(r'(\d{1,2}\s+[a-zA-Z]{3,10}\.?\s+\d{4})', text)
     if match:
         return match.group(1)
     return ""
 
-def is_recente_dopo_luglio_2025(date_text):
-    """Funzione per controllare se la data è successiva a luglio 2025"""
+def is_entro_ultimi_mesi(date_text, mesi=3):
+    """Controlla se la data estratta rientra negli ultimi X mesi rispetto a oggi"""
     if not date_text: return False
     
-    mesi = {
+    mesi_it = {
         'gen': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'mag': 5, 'giu': 6,
-        'lug': 7, 'ago': 8, 'set': 9, 'ott': 10, 'nov': 11, 'dic': 12
+        'lug': 7, 'ago': 8, 'set': 9, 'ott': 10, 'nov': 11, 'dic': 12,
+        'gennaio': 1, 'febbraio': 2, 'marzo': 3, 'aprile': 4, 'maggio': 5, 'giugno': 6,
+        'luglio': 7, 'agosto': 8, 'settembre': 9, 'ottobre': 10, 'novembre': 11, 'dicembre': 12
     }
     
-    match = re.search(r'(\d{1,2})\s+([a-z]{3})\.?\s+(\d{4})', date_text.lower())
+    match = re.search(r'(\d{1,2})\s+([a-zA-Z]+)\.?\s+(\d{4})', date_text.lower())
     if match:
-        month_str = match.group(2)
-        year = int(match.group(3))
-        month = mesi.get(month_str, 0)
+        giorno = int(match.group(1))
+        mese_str = match.group(2).replace('.', '')
+        anno = int(match.group(3))
         
-        if year > 2025:
-            return True
-        if year == 2025 and month > 7:
-            return True
+        mese = mesi_it.get(mese_str) or mesi_it.get(mese_str[:3])
+        if not mese: return False
+        
+        try:
+            data_pubblicazione = datetime(anno, mese, giorno)
+            limite = datetime.now() - timedelta(days=mesi * 30)
+            return data_pubblicazione >= limite
+        except ValueError:
+            return False
             
     return False
 
 def append_to_csv(data_list, filename):
-    """Salva i dati della singola pagina accodandoli al CSV esistente."""
     if not data_list: return
     df = pd.DataFrame(data_list)
-    
-    # Se il file non esiste, aggiunge l'header; altrimenti accoda solo i dati
     file_exists = os.path.isfile(filename)
     df.to_csv(filename, mode='a', header=not file_exists, index=False, encoding='utf-8')
 
 def sort_final_csv(filename):
-    """Alla fine dello scraping, legge il CSV, lo ordina e lo sovrascrive."""
     if os.path.exists(filename):
         print(f"\n--- Riordino finale del file CSV: {filename} ---")
         df = pd.read_csv(filename)
@@ -155,7 +160,7 @@ def get_amazon_data(driver, filename):
         print(f"\n\n{'='*20} SCANSIONE: {cat['name'].upper()} {'='*20}")
         
         for page in range(1, NUM_PAGINE_PER_CATEGORIA + 1):
-            page_books = [] # Accumulatore per la singola pagina
+            page_books = [] 
             
             if page == 1:
                 url = cat['start']
@@ -220,12 +225,12 @@ def get_amazon_data(driver, filename):
                         if review_span:
                             reviews_count = clean_reviews_count(review_span.get_text())
 
-                    # --- NUOVA LOGICA RECENSIONI (DOPPIO BINARIO) ---
+                    # --- NUOVA LOGICA RECENSIONI (FINESTRA 3 MESI) ---
                     if reviews_count >= 60:
-                        pass # Salva sempre se >= 60
+                        pass # Salva sempre i bestseller
                     elif 35 <= reviews_count < 60:
-                        # Salva solo se uscito dopo luglio 2025
-                        if not is_recente_dopo_luglio_2025(date_found):
+                        # Salva solo se uscito negli ultimi 3 mesi
+                        if not is_entro_ultimi_mesi(date_found, 3):
                             continue
                     else:
                         continue # Scarta sempre se < 35
@@ -248,19 +253,16 @@ def get_amazon_data(driver, filename):
                 except Exception:
                     continue
             
-            # Salva i libri trovati in questa pagina direttamente nel CSV
             append_to_csv(page_books, filename)
             print(f"  -> {count_ok} nuovi libri aggiunti e salvati nel CSV.")
 
 def main():
-    # Rimuove il file precedente per evitare di mischiare i dati se fai ripartire da zero
     if os.path.exists(OUTPUT_FILE):
         os.remove(OUTPUT_FILE)
         
     driver = setup_driver()
     try:
         get_amazon_data(driver, OUTPUT_FILE)
-        # Se tutto finisce senza errori, applica l'ordinamento finale
         sort_final_csv(OUTPUT_FILE)
     except KeyboardInterrupt:
         print("\n⚠️ Scraping interrotto manualmente. I dati scaricati finora sono salvi nel CSV.")
