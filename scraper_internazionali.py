@@ -455,12 +455,16 @@ async def main():
     print(f"🚀 Avvio Scraper Internazionale Integrato...")
     
     try:
-        # FIX DEFINITIVO PER GITHUB ACTIONS (ROOT/SANDBOX)
+        # FIX: no_sandbox=True per server root (GitHub Actions)
         browser = await uc.start(
-            headless=True, 
-            no_sandbox=True, 
+            headless=False, 
+            no_sandbox=True,
             user_data_dir=cartella_temporanea,
-            browser_args=['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
+            browser_args=[
+                '--disable-dev-shm-usage', 
+                '--disable-gpu',
+                '--window-size=1920,1080'
+            ]
         )
         tab = browser.main_tab 
         
