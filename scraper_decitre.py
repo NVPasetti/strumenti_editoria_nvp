@@ -30,9 +30,9 @@ async def gestisci_sicurezza(tab):
     testo_pagina = soup.text.lower()
     
     if "just a moment" in testo_pagina or "cloudflare" in testo_pagina or "verify you are human" in testo_pagina or "datadome" in testo_pagina:
-        print("\n🛑 [SISTEMA DI SICUREZZA RILEVATO] Su GitHub questo potrebbe causare un timeout se non si risolve da solo.")
+        print("\n🛑 [SISTEMA DI SICUREZZA RILEVATO] Tento di attendere la risoluzione automatica.")
         
-        for _ in range(5): # Aspetta massimo 15 secondi su GitHub
+        for _ in range(5): # Aspetta massimo 15 secondi
             await asyncio.sleep(3)
             html_check = await tab.get_content()
             testo_check = BeautifulSoup(html_check, 'html.parser').text.lower()
@@ -217,8 +217,16 @@ async def main():
     else:
         print("🌱 Nessun archivio trovato. Verrà creato un database francese oggi.")
 
-    # ATTENZIONE: Qui attiviamo HEADLESS=TRUE per farlo girare nei server invisibili di GitHub Actions
-    browser = await uc.start(headless=True, browser_args=['--no-sandbox', '--disable-dev-shm-usage'])
+    # FIX: Usiamo HEADLESS=FALSE insieme a Xvfb nello YAML per ingannare i controlli antibot
+    browser = await uc.start(
+        headless=False, 
+        browser_args=[
+            '--no-sandbox', 
+            '--disable-dev-shm-usage', 
+            '--disable-gpu',
+            '--window-size=1920,1080'
+        ]
+    )
     tab = browser.main_tab 
     await asyncio.sleep(2) 
     
