@@ -217,11 +217,13 @@ async def main():
     else:
         print("🌱 Nessun archivio trovato. Verrà creato un database francese oggi.")
 
-    # FIX: no_sandbox=True per server root (GitHub Actions)
+    # FIX DEFINITIVO: Forza il Chrome di sistema e disabilita setuid-sandbox
     browser = await uc.start(
         headless=False, 
-        no_sandbox=True,
+        browser_executable_path='/usr/bin/google-chrome',
         browser_args=[
+            '--no-sandbox', 
+            '--disable-setuid-sandbox',
             '--disable-dev-shm-usage', 
             '--disable-gpu',
             '--window-size=1920,1080'
