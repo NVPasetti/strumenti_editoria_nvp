@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import os
 import datetime
+import re
 from supabase import create_client, Client
 
 # --- CONFIGURAZIONE PAGINA ---
@@ -118,7 +119,19 @@ def toggle_salvataggio(item_id):
         st.session_state.libri_salvati[item_id] = ""
         salva_preferito_db(item_id)
 
-# --- FUNZIONI DI CARICAMENTO DATI ---
+# --- FUNZIONI DI CARICAMENTO E PARSING DATI ---
+def parse_amazon_date(date_str):
+    if not date_str or pd.isna(date_str): return None
+    mesi_it = {'gen': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'mag': 5, 'giu': 6, 'lug': 7, 'ago': 8, 'set': 9, 'ott': 10, 'nov': 11, 'dic': 12, 'gennaio': 1, 'febbraio': 2, 'marzo': 3, 'aprile': 4, 'maggio': 5, 'giugno': 6, 'luglio': 7, 'agosto': 8, 'settembre': 9, 'ottobre': 10, 'novembre': 11, 'dicembre': 12}
+    try:
+        match = re.search(r'(\d{1,2})\s+([a-z]+)\.?\s+(\d{4})', str(date_str).lower())
+        if match:
+            d, m_str, y = int(match.group(1)), match.group(2).replace('.', ''), int(match.group(3))
+            m = mesi_it.get(m_str) or mesi_it.get(m_str[:3])
+            if m: return datetime.datetime(y, m, d)
+    except: pass
+    return None
+
 @st.cache_data(ttl=3600)
 def load_amazon_data(file_name):
     if not os.path.exists(file_name): return None
@@ -349,7 +362,6 @@ if piattaforma == "🆕 Novità saggistica (30 giorni)":
                         with c1:
                             url = row['Copertina']
                             if pd.notna(url) and str(url).startswith('http'):
-                                # IMMAGINE TRAMITE HTML FULMINEO
                                 st.markdown(f"<img src='{url}' style='width: 120px; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>", unsafe_allow_html=True)
                             else:
                                 st.markdown("<div style='width: 120px; height: 160px; background: #f0f2f6; display: flex; align-items: center; justify-content: center; border-radius: 4px;'>🖼️ No Img</div>", unsafe_allow_html=True)
@@ -404,7 +416,6 @@ if piattaforma == "🆕 Novità saggistica (30 giorni)":
                         with c_img:
                             url = row['Copertina']
                             if pd.notna(url) and str(url).startswith('http'):
-                                # IMMAGINE TRAMITE HTML FULMINEO
                                 st.markdown(f"<img src='{url}' style='width: 60px; border-radius: 3px;'>", unsafe_allow_html=True)
                             else:
                                 st.markdown("<div style='width: 60px; height: 90px; background: #f0f2f6; border-radius: 3px;'></div>", unsafe_allow_html=True)
@@ -489,21 +500,37 @@ elif piattaforma == "🔍 Scouting Amazon":
             st.session_state.filtro_ord_amz = ord_amz
             st.session_state.filtro_salvati_amz = mostra_salvati_amz
 
-        df_filtrato = df_amz.copy()
-        if mostra_salvati_amz: df_filtrato = df_filtrato[df_filtrato['ASIN'].isin(st.session_state.libri_salvati.keys())]
-        else:
-            if sel_cat_amz != "Tutte": df_filtrato = df_filtrato[df_filtrato['Categoria'] == sel_cat_amz]
-            df_filtrato = df_filtrato[df_filtrato['Recensioni'] >= min_rec_amz]
-            
-        df_filtrato = df_filtrato.sort_values(by='Recensioni', ascending=is_ascending_amz)
-        df_top = df_filtrato[df_filtrato['Recensioni'] >= 60]
-        df_potenziale = df_filtrato[df_filtrato['Recensioni'] < 60]
+        df_base = df_amz.copy()
+        
+        if mostra_salvati_amz:
+            df_base = df_base[df_base['ASIN'].isin(st.session_state.libri_salvati.keys())]
+        elif sel_cat_amz != "Tutte":
+            df_base = df_base[df_base['Categoria'] == sel_cat_amz]
+
+        # Logica Tab 1 (Top): Rispetta lo slider e ordina per recensioni
+        df_top = df_base[df_base['Recensioni'] >= max(60, min_rec_amz)].copy()
+        df_top = df_top.sort_values(by='Recensioni', ascending=is_ascending_amz)
+
+        # Logica Tab 2 (Potenziale): >=35 e <60 recensioni + uscito ultimi 3 mesi
+        oggi = datetime.datetime.now()
+        limite_3_mesi = oggi - datetime.timedelta(days=90)
+        
+        df_base['data_dt'] = df_base['Data'].apply(parse_amazon_date)
+        
+        df_potenziale = df_base[
+            (df_base['Recensioni'] >= 35) & 
+            (df_base['Recensioni'] < 60) &
+            (df_base['data_dt'] >= limite_3_mesi)
+        ].copy()
+        
+        # Ordiniamo per data decrescente in modo da mostrare prima i più nuovi
+        df_potenziale = df_potenziale.sort_values(by='data_dt', ascending=False)
 
         tab_top, tab_potenziale = st.tabs([f"🌟 Più recensioni ({len(df_top)})", f"🚀 Libri con potenziale ({len(df_potenziale)})"])
 
         with tab_top: mostra_griglia_libri(df_top, 'limite_libri_amz_top', 'top')
         with tab_potenziale:
-            st.caption("Libri recenti con un numero di recensioni tra 35 e 59.")
+            st.caption("Libri con un numero di recensioni tra 35 e 59 pubblicati negli ultimi 3 mesi (i più freschi in cima).")
             mostra_griglia_libri(df_potenziale, 'limite_libri_amz_pot', 'pot')
 
 # ==========================================
@@ -557,7 +584,6 @@ elif piattaforma == "🌍 Mercato Internazionale":
                     with c_img:
                         url = row['Copertina']
                         if pd.notna(url) and str(url).startswith('http'):
-                            # IMMAGINE TRAMITE HTML FULMINEO (Salva l'app dal crash col NYT!)
                             st.markdown(f"<img src='{url}' style='width: 100%; border-radius: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>", unsafe_allow_html=True)
                         else:
                             st.markdown("<div style='text-align:center; padding: 20px; background:#f0f2f6; border-radius:5px;'>No Img</div>", unsafe_allow_html=True)
