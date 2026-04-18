@@ -9,11 +9,9 @@ jobs:
   build:
     runs-on: ubuntu-latest
     
-    # 1. AUTORIZZA GITHUB A SCRIVERE SUL REPOSITORY
     permissions:
       contents: write
       
-    # 2. FORZA NODE 24 (Silenziatore avviso giallo)
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
@@ -29,7 +27,7 @@ jobs:
     - name: Installazione dipendenze
       run: |
         python -m pip install --upgrade pip
-        pip install pandas beautifulsoup4 nodriver
+        pip install pandas beautifulsoup4 selenium webdriver-manager
 
     - name: Esecuzione Scraper Internazionali (Include Big 5 + NYT)
       run: python scraper_internazionali.py
@@ -43,6 +41,5 @@ jobs:
         git config --local user.name "GitHub Action"
         git add dati_internazionali.csv dati_decitre_scraper.csv
         git commit -m "Aggiornamento automatico dati: $(date +'%Y-%m-%d')" || true
-        # 3. SCARICA EVENTUALI TUE MODIFICHE PRIMA DI CARICARE I CSV
         git pull --rebase origin main
         git push
