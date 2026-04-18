@@ -2,30 +2,50 @@ import sys
 import time
 import re
 import random
-import asyncio
-import ssl
-import tempfile
 import os
 import pandas as pd
 from datetime import datetime
 from bs4 import BeautifulSoup
-import nodriver as uc
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
+from webdriver_manager.chrome import ChromeDriverManager
 
-# --- FIX SSL E ENCODING ---
-ssl._create_default_https_context = ssl._create_unverified_context
+# --- FIX ENCODING ---
 if sys.stdout.encoding != 'utf-8':
     try:
         sys.stdout.reconfigure(encoding='utf-8')
     except AttributeError:
         pass
 
-# Nome del file CSV unico
 CSV_FILENAME = "dati_internazionali.csv"
+
+# --- CONFIGURAZIONE DRIVER STEALTH ---
+def get_driver():
+    options = Options()
+    options.add_argument('--headless=new') # Nuova modalità invisibile anti-blocco
+    options.add_argument('--no-sandbox')
+    options.add_argument('--disable-dev-shm-usage')
+    options.add_argument('--disable-gpu')
+    options.add_argument('--window-size=1920,1080')
+    options.add_argument('--disable-blink-features=AutomationControlled')
+    options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
+    options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    options.add_experimental_option('useAutomationExtension', False)
+
+    service = Service(ChromeDriverManager().install())
+    driver = webdriver.Chrome(service=service, options=options)
+
+    # Rimuove il flag 'webdriver' per ingannare i bot
+    driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
+        'source': '''Object.defineProperty(navigator, 'webdriver', { get: () => undefined })'''
+    })
+    return driver
 
 # ==========================================
 # 🗽 0. NEW YORK TIMES (BESTSELLERS)
 # ==========================================
-async def get_nyt_bestsellers(tab):
+def get_nyt_bestsellers(driver):
     print("\n--- 🗽 AVVIO NEW YORK TIMES BEST SELLERS ---")
     urls_nyt = [
         ("Hardcover", "https://www.nytimes.com/books/best-sellers/hardcover-nonfiction/"),
@@ -39,57 +59,39 @@ async def get_nyt_bestsellers(tab):
     for nome_cat, url in urls_nyt:
         print(f"🔍 Scansione NYT: {nome_cat}...")
         try:
-            await tab.get(url)
-            await asyncio.sleep(4)
-            await tab.evaluate("window.scrollTo(0, document.body.scrollHeight/2);")
-            await asyncio.sleep(1.5)
+            driver.get(url)
+            time.sleep(4)
+            driver.execute_script("window.scrollTo(0, document.body.scrollHeight/2);")
+            time.sleep(1.5)
 
-            html = await tab.get_content()
+            html = driver.page_source
             soup = BeautifulSoup(html, 'html.parser')
-
-            # FIX: Solo i tag H3 per evitare la "spazzatura" HTML dei menu!
             titoli_tags = soup.find_all('h3', itemprop='name')
 
             for h3 in titoli_tags:
                 titolo = h3.get_text(strip=True).title()
-                
                 if len(titolo) < 2 or titolo.lower() in titoli_visti:
                     continue
                 
                 titoli_visti.add(titolo.lower())
                 container = h3.find_parent('article') or h3.find_parent('li') or h3.parent.parent
                 
-                autore = "N/D"
-                copertina = "N/D"
-                descrizione = "N/D"
-                editore = "New York Times Bestseller"
+                autore, copertina, descrizione, editore = "N/D", "N/D", "N/D", "New York Times Bestseller"
                 
                 if container:
                     a_tag = container.find(itemprop='author')
-                    if a_tag:
-                        autore = re.sub(r'(?i)^by\s*', '', a_tag.get_text(strip=True))
+                    if a_tag: autore = re.sub(r'(?i)^by\s*', '', a_tag.get_text(strip=True))
                     
                     img_tag = container.find('img', itemprop='image')
-                    if img_tag:
-                        copertina = img_tag.get('src') or "N/D"
+                    if img_tag: copertina = img_tag.get('src') or "N/D"
                         
                     desc_tag = container.find(itemprop='description')
-                    if desc_tag:
-                        descrizione = desc_tag.get_text(strip=True)
+                    if desc_tag: descrizione = desc_tag.get_text(strip=True)
                         
                     ed_tag = container.find(itemprop='publisher')
-                    if ed_tag:
-                        editore = ed_tag.get_text(strip=True)
+                    if ed_tag: editore = ed_tag.get_text(strip=True)
 
-                dettagli = {
-                    "Editore": editore,
-                    "Titolo": titolo,
-                    "Autore": autore,
-                    "Descrizione": descrizione,
-                    "Copertina": copertina,
-                    "Link": url 
-                }
-                risultati.append(dettagli)
+                risultati.append({"Editore": editore, "Titolo": titolo, "Autore": autore, "Descrizione": descrizione, "Copertina": copertina, "Link": url})
                 
         except Exception as e:
             print(f"⚠️ Errore su {nome_cat}: {e}")
@@ -100,47 +102,41 @@ async def get_nyt_bestsellers(tab):
 # ==========================================
 # 🐧 1. PENGUIN RANDOM HOUSE
 # ==========================================
-async def get_penguin_releases(tab):
+def get_penguin_releases(driver):
     print("\n--- 🐧 AVVIO PENGUIN RANDOM HOUSE (5 Pagine) ---")
     urls_da_visitare = []
     
     for page in range(1, 6):
         url = f"https://www.penguinrandomhouse.com/books/new-releases-nonfiction/?page={page}"
         print(f"🔍 Scansione Vetrina Penguin Pagina {page}...")
-        await tab.get(url)
-        await asyncio.sleep(4)
-        await tab.evaluate("window.scrollTo(0, document.body.scrollHeight/2);")
-        await asyncio.sleep(1)
+        driver.get(url)
+        time.sleep(4)
+        driver.execute_script("window.scrollTo(0, document.body.scrollHeight/2);")
+        time.sleep(1)
         
-        html = await tab.get_content()
+        html = driver.page_source
         soup = BeautifulSoup(html, 'html.parser')
         
-        links = soup.find_all('a', href=re.compile(r'/books/\d+/'))
-        for l in links:
+        for l in soup.find_all('a', href=re.compile(r'/books/\d+/')):
             href = l['href']
             full_url = href if href.startswith('http') else "https://www.penguinrandomhouse.com" + href
-            if full_url not in urls_da_visitare:
-                urls_da_visitare.append(full_url)
+            if full_url not in urls_da_visitare: urls_da_visitare.append(full_url)
                 
     print(f"✅ Trovati {len(urls_da_visitare)} titoli su Penguin. Inizio estrazione...")
     
     risultati = []
     for link in urls_da_visitare:
         try:
-            await tab.get(link)
-            await asyncio.sleep(random.uniform(2.0, 3.5))
-            html = await tab.get_content()
-            soup = BeautifulSoup(html, 'html.parser')
-            
+            driver.get(link)
+            time.sleep(random.uniform(2.0, 3.5))
+            soup = BeautifulSoup(driver.page_source, 'html.parser')
             dettagli = {"Editore": "Penguin Random House", "Titolo": "N/D", "Autore": "N/D", "Descrizione": "N/D", "Copertina": "N/D", "Link": link}
             
             h1 = soup.find('h1')
             if h1: dettagli["Titolo"] = h1.get_text(strip=True)
                 
             h2 = soup.find('h2')
-            if h2: 
-                testo_autore = h2.get_text(strip=True)
-                dettagli["Autore"] = re.sub(r'(?i)^by\s*', '', testo_autore).strip()
+            if h2: dettagli["Autore"] = re.sub(r'(?i)^by\s*', '', h2.get_text(strip=True)).strip()
                 
             desc_div = soup.find('div', id='book-description-copy') or soup.find(class_=re.compile(r'book-description', re.I))
             if desc_div:
@@ -150,56 +146,45 @@ async def get_penguin_releases(tab):
             img_tag = soup.find('img', id='coverFormat') or soup.find('img', class_=re.compile(r'responsive_img|img-responsive', re.I))
             if img_tag:
                 src = img_tag.get('src') or img_tag.get('data-src') or ""
-                if src:
-                    dettagli["Copertina"] = src if src.startswith('http') else "https:" + src
+                if src: dettagli["Copertina"] = src if src.startswith('http') else "https:" + src
                 
             risultati.append(dettagli)
-        except:
-            continue
-        
+        except: continue
     return risultati
 
 # ==========================================
 # 📚 2. HARPERCOLLINS
 # ==========================================
-async def get_harper_releases(tab):
+def get_harper_releases(driver):
     print("\n--- 📚 AVVIO HARPERCOLLINS ---")
     url = "https://www.harpercollins.com/collections/new-in-nonfiction?sortBy=HCUSproducts_meta.hc-defined.publishdtimestamp_desc"
-    await tab.get(url)
-    await asyncio.sleep(6) 
-    await tab.evaluate("window.scrollTo(0, 500);")
-    await asyncio.sleep(2)
+    driver.get(url)
+    time.sleep(6) 
+    driver.execute_script("window.scrollTo(0, 500);")
+    time.sleep(2)
     
-    html = await tab.get_content()
-    soup = BeautifulSoup(html, 'html.parser')
-    
-    immagini_libri = soup.find_all('img', class_='ais-hit-picture--img')
+    soup = BeautifulSoup(driver.page_source, 'html.parser')
     urls_pagina = []
     
-    for img in immagini_libri:
+    for img in soup.find_all('img', class_='ais-hit-picture--img'):
         parent_a = img.find_parent('a')
         if parent_a and parent_a.get('href'):
-            href = parent_a.get('href')
-            full_url = href if href.startswith('http') else "https://www.harpercollins.com" + href
-            if full_url not in urls_pagina:
-                urls_pagina.append(full_url)
+            full_url = parent_a.get('href') if parent_a.get('href').startswith('http') else "https://www.harpercollins.com" + parent_a.get('href')
+            if full_url not in urls_pagina: urls_pagina.append(full_url)
                 
     print(f"✅ Trovati {len(urls_pagina)} titoli su HarperCollins. Inizio estrazione...")
     
     risultati = []
     for link in urls_pagina:
         try:
-            await tab.get(link)
-            await asyncio.sleep(random.uniform(2.5, 4.0)) 
-            html = await tab.get_content()
-            soup = BeautifulSoup(html, 'html.parser')
-            
+            driver.get(link)
+            time.sleep(random.uniform(2.5, 4.0)) 
+            soup = BeautifulSoup(driver.page_source, 'html.parser')
             dettagli = {"Editore": "HarperCollins", "Titolo": "N/D", "Autore": "N/D", "Descrizione": "N/D", "Copertina": "N/D", "Link": link}
             
             titolo_principale = soup.find('h1', class_='product-title')
             sottotitolo = soup.find('h3')
-            if titolo_principale:
-                dettagli["Titolo"] = titolo_principale.get_text(strip=True) + (". " + sottotitolo.get_text(strip=True) if sottotitolo else "")
+            if titolo_principale: dettagli["Titolo"] = titolo_principale.get_text(strip=True) + (". " + sottotitolo.get_text(strip=True) if sottotitolo else "")
                 
             author_p = soup.find('p', class_='authorsParse')
             if author_p:
@@ -217,30 +202,23 @@ async def get_harper_releases(tab):
                 dettagli["Descrizione"] = desc_div.get_text(separator=' ', strip=True)
                 
             risultati.append(dettagli)
-        except:
-            continue
-        
+        except: continue
     return risultati
 
 # ==========================================
 # 🌳 3. SIMON & SCHUSTER
 # ==========================================
-async def get_simon_releases(tab):
+def get_simon_releases(driver):
     print("\n--- 🌳 AVVIO SIMON & SCHUSTER ---")
-    url = "https://www.simonandschuster.com/p/new-releases#non-fiction"
-    await tab.get(url)
-    await asyncio.sleep(5)
+    driver.get("https://www.simonandschuster.com/p/new-releases#non-fiction")
+    time.sleep(5)
     
-    html = await tab.get_content()
-    soup = BeautifulSoup(html, 'html.parser')
-    col_divs = soup.find_all('div', class_=re.compile(r'column.*is-4'))
-    
+    soup = BeautifulSoup(driver.page_source, 'html.parser')
     libri_trovati = []
-    for div in col_divs:
+    for div in soup.find_all('div', class_=re.compile(r'column.*is-4')):
         a_tag = div.find('a')
         if a_tag and a_tag.get('href'):
-            href = a_tag.get('href')
-            full_url = href if href.startswith('http') else "https://www.simonandschuster.com" + href
+            full_url = a_tag.get('href') if a_tag.get('href').startswith('http') else "https://www.simonandschuster.com" + a_tag.get('href')
             img = a_tag.find('img')
             copertina = (img.get('data-src') or img.get('src')) if img else "N/D"
             title_div = div.find('div', class_=re.compile(r'book-title'))
@@ -252,16 +230,13 @@ async def get_simon_releases(tab):
     risultati = []
     for libro in libri_trovati:
         try:
-            await tab.get(libro['Link'])
-            await asyncio.sleep(random.uniform(2.5, 4.0))
-            html = await tab.get_content()
-            soup = BeautifulSoup(html, 'html.parser')
-            
+            driver.get(libro['Link'])
+            time.sleep(random.uniform(2.5, 4.0))
+            soup = BeautifulSoup(driver.page_source, 'html.parser')
             dettagli = {"Editore": "Simon & Schuster", "Titolo": libro['Titolo'], "Autore": "N/D", "Descrizione": "N/D", "Copertina": libro['Copertina'], "Link": libro['Link']}
             
             author_tag = soup.find(class_=re.compile(r'author|contributor', re.I))
-            if author_tag:
-                dettagli["Autore"] = re.sub(r'(?i)^by\s*', '', author_tag.get_text(strip=True))
+            if author_tag: dettagli["Autore"] = re.sub(r'(?i)^by\s*', '', author_tag.get_text(strip=True))
                 
             desc_box = soup.find(class_=re.compile(r'description|about|summary|content', re.I))
             if desc_box:
@@ -269,30 +244,24 @@ async def get_simon_releases(tab):
                 dettagli["Descrizione"] = desc_box.get_text(separator=' ', strip=True)
                 
             risultati.append(dettagli)
-        except:
-            continue
-        
+        except: continue
     return risultati
 
 # ==========================================
 # Ⓜ️ 4. MACMILLAN
 # ==========================================
-async def get_macmillan_releases(tab):
+def get_macmillan_releases(driver):
     print("\n--- Ⓜ️ AVVIO MACMILLAN ---")
-    url = "https://us.macmillan.com/search?dFR%5Bcollections.list.name%5D%5B0%5D=New%20Releases&dFR%5BhierarchicalCategories.lvl0%5D%5B0%5D=Nonfiction&searchType=products"
-    await tab.get(url)
-    await asyncio.sleep(6) 
-    await tab.evaluate("window.scrollTo(0, 500);")
-    await asyncio.sleep(2)
+    driver.get("https://us.macmillan.com/search?dFR%5Bcollections.list.name%5D%5B0%5D=New%20Releases&dFR%5BhierarchicalCategories.lvl0%5D%5B0%5D=Nonfiction&searchType=products")
+    time.sleep(6) 
+    driver.execute_script("window.scrollTo(0, 500);")
+    time.sleep(2)
     
-    html = await tab.get_content()
-    soup = BeautifulSoup(html, 'html.parser')
-    
-    immagini_libri = soup.find_all('img', class_=re.compile(r'img__el'))
+    soup = BeautifulSoup(driver.page_source, 'html.parser')
     libri_trovati = []
     urls_visti = set()
     
-    for img in immagini_libri:
+    for img in soup.find_all('img', class_=re.compile(r'img__el')):
         parent_a = img.find_parent('a')
         if parent_a and parent_a.get('href'):
             href = parent_a.get('href')
@@ -308,17 +277,14 @@ async def get_macmillan_releases(tab):
     risultati = []
     for libro in libri_trovati:
         try:
-            await tab.get(libro['Link'])
-            await asyncio.sleep(random.uniform(2.5, 4.0))
-            html = await tab.get_content()
-            soup = BeautifulSoup(html, 'html.parser')
-            
+            driver.get(libro['Link'])
+            time.sleep(random.uniform(2.5, 4.0))
+            soup = BeautifulSoup(driver.page_source, 'html.parser')
             dettagli = {"Editore": "Macmillan", "Titolo": "N/D", "Autore": "N/D", "Descrizione": "N/D", "Copertina": libro['Copertina'], "Link": libro['Link']}
             
             h1 = soup.find('h1', class_=re.compile(r'section-title__heading'))
             h2 = soup.find('h2', class_=re.compile(r'section-title__sub-title'))
-            if h1:
-                dettagli["Titolo"] = h1.get_text(strip=True) + (". " + h2.get_text(strip=True) if h2 else "")
+            if h1: dettagli["Titolo"] = h1.get_text(strip=True) + (". " + h2.get_text(strip=True) if h2 else "")
                 
             author_p = soup.find('p', class_=re.compile(r'section-title__content'))
             if author_p:
@@ -332,37 +298,26 @@ async def get_macmillan_releases(tab):
                 dettagli["Descrizione"] = desc_div.get_text(separator=' ', strip=True)
                 
             risultati.append(dettagli)
-        except:
-            continue
-        
+        except: continue
     return risultati
 
 # ==========================================
 # 🏰 5. HACHETTE
 # ==========================================
-async def get_hachette_releases(tab):
+def get_hachette_releases(driver):
     print("\n--- 🏰 AVVIO HACHETTE ---")
-    url = "https://www.hachettebookgroup.com/genre-category/nonfiction/"
-    await tab.get(url)
-    await asyncio.sleep(5)
+    driver.get("https://www.hachettebookgroup.com/genre-category/nonfiction/")
+    time.sleep(5)
     
     try:
-        await tab.evaluate("""
-            let btn = document.querySelector('button[id^="carousel-"]');
-            if(btn) btn.click();
-        """)
-        await asyncio.sleep(1.5)
-    except:
-        pass
+        driver.execute_script("let btn = document.querySelector('button[id^=\"carousel-\"]'); if(btn) btn.click();")
+        time.sleep(1.5)
+    except: pass
 
-    html = await tab.get_content()
-    soup = BeautifulSoup(html, 'html.parser')
-    links = soup.find_all('a', href=re.compile(r'/titles/'))
-    
+    soup = BeautifulSoup(driver.page_source, 'html.parser')
     urls_visti = set()
-    for l in links:
-        href = l['href']
-        full_url = href if href.startswith('http') else "https://www.hachettebookgroup.com" + href
+    for l in soup.find_all('a', href=re.compile(r'/titles/')):
+        full_url = l['href'] if l['href'].startswith('http') else "https://www.hachettebookgroup.com" + l['href']
         urls_visti.add(full_url)
         
     print(f"✅ Trovati {len(urls_visti)} titoli su Hachette. Inizio estrazione...")
@@ -370,11 +325,9 @@ async def get_hachette_releases(tab):
     risultati = []
     for link in urls_visti:
         try:
-            await tab.get(link)
-            await asyncio.sleep(random.uniform(2.5, 4.0))
-            html = await tab.get_content()
-            soup = BeautifulSoup(html, 'html.parser')
-            
+            driver.get(link)
+            time.sleep(random.uniform(2.5, 4.0))
+            soup = BeautifulSoup(driver.page_source, 'html.parser')
             dettagli = {"Editore": "Hachette", "Titolo": "N/D", "Autore": "N/D", "Descrizione": "N/D", "Copertina": "N/D", "Link": link}
             
             h1 = soup.find('h1')
@@ -382,9 +335,8 @@ async def get_hachette_releases(tab):
                 
             author_tag = soup.find(class_=re.compile(r'author|contributor', re.I))
             if author_tag:
-                testo_autore = author_tag.get_text(strip=True)
-                parti = re.split(r'(?i)by\s+', testo_autore)
-                dettagli["Autore"] = parti[-1].strip() if len(parti) > 1 else testo_autore
+                parti = re.split(r'(?i)by\s+', author_tag.get_text(strip=True))
+                dettagli["Autore"] = parti[-1].strip() if len(parti) > 1 else author_tag.get_text(strip=True)
                 
             desc_box = soup.find(id=re.compile(r'description|about', re.I)) or soup.find(class_=re.compile(r'description|about|summary', re.I))
             if desc_box:
@@ -392,17 +344,14 @@ async def get_hachette_releases(tab):
                 dettagli["Descrizione"] = desc_box.get_text(separator=' ', strip=True)
                 
             img_tag = soup.find('img', class_=re.compile(r'cover|product|book', re.I))
-            if img_tag:
-                dettagli["Copertina"] = img_tag.get('data-src') or img_tag.get('src') or ""
+            if img_tag: dettagli["Copertina"] = img_tag.get('data-src') or img_tag.get('src') or ""
                 
             risultati.append(dettagli)
-        except:
-            continue
-        
+        except: continue
     return risultati
 
 # ==========================================
-# 💾 SINCRONIZZATORE CSV (Internazionale)
+# 💾 SINCRONIZZATORE CSV 
 # ==========================================
 def sincronizza_csv_editore(nuovi_dati, nome_editore, categoria_default='Novità'):
     if not nuovi_dati:
@@ -443,54 +392,28 @@ def sincronizza_csv_editore(nuovi_dati, nome_editore, categoria_default='Novità
     esistenti = [c for c in cols if c in df_completo.columns]
     df_completo = df_completo[esistenti]
     df_completo.to_csv(CSV_FILENAME, index=False)
-    
-    nome_print = "New York Times Bestsellers" if nome_editore == "NYT" else nome_editore
-    print(f"🔄 Database aggiornato per {nome_print}.")
+    print(f"🔄 Database aggiornato per {nome_editore}.")
 
 # ==========================================
-# 🚀 FUNZIONE MAIN
+# 🚀 FUNZIONE MAIN Sincrona (Selenium)
 # ==========================================
-async def main():
-    print(f"🚀 Avvio Scraper Internazionale Integrato...")
+def main():
+    print(f"🚀 Avvio Scraper Internazionale (Modalità Selenium Stealth)...")
+    driver = get_driver()
     
     try:
-        # FIX DEFINITIVO PER GITHUB ACTIONS: Headless True, no_sandbox esterno
-        browser = await uc.start(
-            headless=True,
-            no_sandbox=True,
-            browser_args=[
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage', 
-                '--disable-gpu',
-                '--window-size=1920,1080',
-                '--disable-blink-features=AutomationControlled'
-            ]
-        )
-        tab = browser.main_tab 
-        
-        # 1. NYT Bestsellers
-        risultati_nyt = await get_nyt_bestsellers(tab)
-        sincronizza_csv_editore(risultati_nyt, "NYT", categoria_default="Bestseller")
-        
-        # 2. Big 5 Editori
-        sincronizza_csv_editore(await get_penguin_releases(tab), "Penguin Random House")
-        sincronizza_csv_editore(await get_harper_releases(tab), "HarperCollins")
-        sincronizza_csv_editore(await get_simon_releases(tab), "Simon & Schuster")
-        sincronizza_csv_editore(await get_macmillan_releases(tab), "Macmillan")
-        sincronizza_csv_editore(await get_hachette_releases(tab), "Hachette")
-        
+        sincronizza_csv_editore(get_nyt_bestsellers(driver), "NYT", categoria_default="Bestseller")
+        sincronizza_csv_editore(get_penguin_releases(driver), "Penguin Random House")
+        sincronizza_csv_editore(get_harper_releases(driver), "HarperCollins")
+        sincronizza_csv_editore(get_simon_releases(driver), "Simon & Schuster")
+        sincronizza_csv_editore(get_macmillan_releases(driver), "Macmillan")
+        sincronizza_csv_editore(get_hachette_releases(driver), "Hachette")
     except Exception as e:
-        print(f"⚠️ Errore critico: {e}")
+        print(f"⚠️ Errore critico globale: {e}")
     finally:
-        try:
-            browser.stop()
-        except:
-            pass
+        driver.quit()
         
     print(f"\n✅ Sincronizzazione conclusa. File pronto: {CSV_FILENAME}")
 
 if __name__ == "__main__":
-    try:
-        uc.loop().run_until_complete(main())
-    except Exception as e:
-        print(f"❌ Errore avvio: {e}")
+    main()
