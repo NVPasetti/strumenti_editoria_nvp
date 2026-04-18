@@ -454,11 +454,11 @@ async def main():
     print(f"🚀 Avvio Scraper Internazionale Integrato...")
     
     try:
-        # FIX PER GITHUB ACTIONS: Headless True + Disabilitazione totale Sandbox
+        # FIX DEFINITIVO PER GITHUB ACTIONS: Headless True, no_sandbox esterno
         browser = await uc.start(
-            headless=True, 
+            headless=True,
+            no_sandbox=True,
             browser_args=[
-                '--no-sandbox', 
                 '--disable-setuid-sandbox',
                 '--disable-dev-shm-usage', 
                 '--disable-gpu',
