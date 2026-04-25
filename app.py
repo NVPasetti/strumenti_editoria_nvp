@@ -708,6 +708,8 @@ elif piattaforma == "📺 Palinsesto Ospiti TV":
                     for index, row in group.iterrows():
                         with st.container(border=True):
                             c1, c2 = st.columns([1, 4])
+                            
+                            # 1. Colonna Immagine
                             with c1:
                                 img_url = str(row.get('Immagine', 'N/D'))
                                 if img_url and img_url.startswith('http'):
@@ -715,19 +717,23 @@ elif piattaforma == "📺 Palinsesto Ospiti TV":
                                 else:
                                     st.markdown("<div style='height: 120px; display: flex; justify-content: center; align-items: center; background-color: #f8f9fa; border-radius: 5px; color: gray;'>📺 Nessuna Immagine</div>", unsafe_allow_html=True)
                             
+                            # 2. Colonna Testo
                             with c2:
                                 st.subheader(row['Titolo'])
-                                autore = row.get('Autore', 'N/D')
                                 ospiti = row.get('Ospiti', 'Nessun ospite citato')
                                 link = row.get('Link', '#')
-                                
-                                st.markdown(f"**Ospiti / Anticipazioni:** {ospiti}")
-                                st.caption(f"✍️ di {autore} | [➡️ Leggi la notizia completa]({link})")
-                                
                                 desc_completa = str(row.get('Descrizione_Completa', ''))
-                                if len(desc_completa) > 5 and desc_completa != "nan":
-                                    with st.expander("📖 Leggi descrizione integrale"):
-                                        st.write(desc_completa)
+                                
+                                # Solo gli ospiti in grassetto senza etichette
+                                st.markdown(f"**{ospiti}**")
+                                
+                                # Descrizione integrale sempre visibile
+                                if desc_completa != "nan" and len(desc_completa) > 5:
+                                    st.write(desc_completa)
+                                
+                                # Solo il link per approfondire, niente autore
+                                st.caption(f"[➡️ Leggi la notizia completa]({link})")
+                                
                     st.markdown("---")
             else:
                 st.info("Nessuna data valida trovata nel database.")
