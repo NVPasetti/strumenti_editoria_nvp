@@ -104,12 +104,39 @@ def rimuovi_reminder_db(id_link):
         except Exception:
             pass
 
+# --- FUNZIONI DATABASE AUTORI MONITORATI ---
+def carica_autori_db():
+    if supabase:
+        try:
+            risposta = supabase.table("autori_monitorati").select("autore").execute()
+            return set(r["autore"] for r in risposta.data if r.get("autore"))
+        except Exception:
+            return set()
+    return set()
+
+def salva_autore_db(nome_autore):
+    if supabase and nome_autore and nome_autore != "N/D":
+        try:
+            supabase.table("autori_monitorati").insert({"autore": nome_autore}).execute()
+        except Exception:
+            pass
+
+def rimuovi_autore_db(nome_autore):
+    if supabase:
+        try:
+            supabase.table("autori_monitorati").delete().eq("autore", nome_autore).execute()
+        except Exception:
+            pass
+
 # --- INIZIALIZZAZIONE MEMORIA GLOBALE ---
 if 'libri_salvati' not in st.session_state:
     st.session_state.libri_salvati = carica_preferiti_db()
 
 if 'reminders' not in st.session_state:
     st.session_state.reminders = carica_reminders_db()
+
+if 'autori_monitorati' not in st.session_state:
+    st.session_state.autori_monitorati = carica_autori_db()
 
 def toggle_salvataggio(item_id):
     if item_id in st.session_state.libri_salvati:
@@ -330,6 +357,24 @@ if piattaforma == "🆕 Novità saggistica (30 giorni)":
                         st.rerun()
                     st.markdown("---")
 
+        # --- NUOVA SEZIONE: ARCHIVIO AUTORI ---
+        num_autori = len(st.session_state.autori_monitorati)
+        with st.sidebar.expander(f"✍️ Autori in Archivio Storico ({num_autori})"):
+            if num_autori == 0:
+                st.caption("Nessun autore salvato finora.")
+            else:
+                st.caption("Autori dei libri che hai monitorato.")
+                for autore_salvato in sorted(st.session_state.autori_monitorati):
+                    col_nome, col_btn = st.columns([4, 1])
+                    with col_nome:
+                        st.markdown(f"**{autore_salvato}**")
+                    with col_btn:
+                        if st.button("❌", key=f"del_aut_{hash(autore_salvato)}", help="Rimuovi autore"):
+                            st.session_state.autori_monitorati.remove(autore_salvato)
+                            rimuovi_autore_db(autore_salvato)
+                            st.rerun()
+                    st.markdown("---")
+
         if solo_nuovi:
             df_vip = df_vip[df_vip['Nuovo'] == True]
             df_altri = df_altri[df_altri['Nuovo'] == True]
@@ -388,6 +433,12 @@ if piattaforma == "🆕 Novità saggistica (30 giorni)":
                                         scadenza = (data_base + datetime.timedelta(days=30)).isoformat()
                                         st.session_state.reminders[link] = {"titolo": row['Titolo'], "autore": autore_libro, "data_scadenza": scadenza}
                                         aggiungi_reminder_db(link, row['Titolo'], autore_libro, scadenza)
+                                        
+                                        # --- SALVATAGGIO AUTORE IN ARCHIVIO STORICO ---
+                                        if autore_libro and autore_libro != "N/D":
+                                            st.session_state.autori_monitorati.add(autore_libro)
+                                            salva_autore_db(autore_libro)
+                                            
                                     st.rerun()
 
                             st.markdown(f"**{autore_libro}** | *{row.get('Editore', 'N/D')}* ({row.get('Anno', '')})")
@@ -442,6 +493,12 @@ if piattaforma == "🆕 Novità saggistica (30 giorni)":
                                     scadenza = (data_base + datetime.timedelta(days=30)).isoformat()
                                     st.session_state.reminders[link] = {"titolo": row['Titolo'], "autore": autore_libro, "data_scadenza": scadenza}
                                     aggiungi_reminder_db(link, row['Titolo'], autore_libro, scadenza)
+                                    
+                                    # --- SALVATAGGIO AUTORE IN ARCHIVIO STORICO ---
+                                    if autore_libro and autore_libro != "N/D":
+                                        st.session_state.autori_monitorati.add(autore_libro)
+                                        salva_autore_db(autore_libro)
+                                        
                                 st.rerun()
                         st.markdown("---")
 
