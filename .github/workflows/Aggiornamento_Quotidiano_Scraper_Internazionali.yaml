@@ -24,16 +24,20 @@ jobs:
       with:
         python-version: '3.11'
 
-    - name: Installazione dipendenze
+    - name: Installazione Dipendenze e Sistema
       run: |
+        sudo apt-get update
+        sudo apt-get install -y xvfb
         python -m pip install --upgrade pip
-        pip install pandas beautifulsoup4 selenium webdriver-manager
+        pip install pandas beautifulsoup4 selenium webdriver-manager undetected-chromedriver
 
     - name: Esecuzione Scraper Internazionali (Include Big 5 + NYT)
+      # L'americano usa Selenium puro
       run: python scraper_internazionali.py
 
     - name: Esecuzione Scraper Decitre
-      run: python scraper_decitre.py
+      # Il francese usa undetected-chromedriver dentro il monitor virtuale
+      run: xvfb-run --auto-servernum python scraper_decitre.py
 
     - name: Commit e Push dei risultati
       run: |
