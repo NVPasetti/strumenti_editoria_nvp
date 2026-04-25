@@ -688,4 +688,53 @@ elif piattaforma == "📺 Palinsesto Ospiti TV":
             # Elimina righe con date non valide e ordina dalla più recente
             df_tv_sorted = df_tv.dropna(subset=['Data_dt']).sort_values(by='Data_dt', ascending=False)
             
-            # Creazione menu a tend
+            # Creazione menu a tendina laterale per le date
+            date_disponibili = sorted(df_tv_sorted['Data_dt'].dt.date.unique(), reverse=True)
+            
+            if len(date_disponibili) > 0:
+                st.sidebar.header("Filtri Palinsesto")
+                data_selezionata = st.sidebar.selectbox("Vai al giorno:", ["Tutti i giorni"] + list(date_disponibili))
+                
+                # Visualizzazione raggruppata a "Calendario"
+                for data_corrente, group in df_tv_sorted.groupby('Data_dt', sort=False):
+                    
+                    # Salta se c'è un filtro attivo e la data non corrisponde
+                    if data_selezionata != "Tutti i giorni" and data_corrente.date() != data_selezionata:
+                        continue
+                        
+                    giorno_str = data_corrente.strftime('%d/%m/%Y')
+                    st.header(f"🗓️ {giorno_str}")
+                    
+                    for index, row in group.iterrows():
+                        with st.container(border=True):
+                            c1, c2 = st.columns([1, 4])
+                            
+                            # 1. Colonna Immagine
+                            with c1:
+                                img_url = str(row.get('Immagine', 'N/D'))
+                                if img_url and img_url.startswith('http'):
+                                    st.image(img_url, use_container_width=True)
+                                else:
+                                    st.markdown("<div style='height: 120px; display: flex; justify-content: center; align-items: center; background-color: #f8f9fa; border-radius: 5px; color: gray;'>📺 Nessuna Immagine</div>", unsafe_allow_html=True)
+                            
+                            # 2. Colonna Testo (Solo Titolo, Descrizione integrale e Link)
+                            with c2:
+                                st.subheader(row['Titolo'])
+                                link = row.get('Link', '#')
+                                desc_completa = str(row.get('Descrizione_Completa', ''))
+                                
+                                # Descrizione integrale sempre visibile
+                                if desc_completa != "nan" and len(desc_completa) > 5:
+                                    st.write(desc_completa)
+                                
+                                # Solo il link per approfondire (senza autore)
+                                st.caption(f"[➡️ Leggi la notizia completa]({link})")
+                                
+                    st.markdown("---")
+            else:
+                st.info("Nessuna data valida trovata nel database.")
+                
+        except Exception as e:
+            st.error(f"Errore nella lettura dei dati TV: {e}")
+    else:
+        st.warning("⚠️ Dati TV non ancora disponibili. Attendi che lo scraper generi il file 'ospiti_tv.csv'.")
