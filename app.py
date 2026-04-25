@@ -594,7 +594,7 @@ elif piattaforma == "🔍 Scouting Amazon":
 # SEZIONE 3: MERCATO INTERNAZIONALE
 # ==========================================
 elif piattaforma == "🌍 Mercato Internazionale":
-    st.title("🌍 Scouting Internazionale")
+    st.title("🌍 Mercato Internazionale")
     st.caption("Esplora le novità e i bestseller dai principali mercati esteri.")
 
     if 'limite_estero_novita' not in st.session_state: st.session_state.limite_estero_novita = 20
