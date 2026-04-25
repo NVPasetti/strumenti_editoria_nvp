@@ -1,0 +1,24 @@
+name: Aggiornamento Palinsesto TV
+on:
+  schedule:
+    - cron: '0 8,12,16 * * *'
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    - name: Installazione dipendenze
+      run: pip install pandas beautifulsoup4 curl_cffi
+    - name: Run Scraper
+      run: python scraper_tv.py
+    - name: Push Risultati
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add ospiti_tv.csv
+        git commit -m "Update TV: $(date +'%Y-%m-%d %H:%M')" || true
+        git push
