@@ -675,7 +675,7 @@ elif piattaforma == "🌍 Mercato Internazionale":
 # ==========================================
 elif piattaforma == "📺 Palinsesto Ospiti TV":
     st.title("📅 Agenda Ospiti e Programmi TV")
-    st.caption("Monitora i palinsesti e scopri gli ospiti dei principali programmi televisivi italiani.")
+    st.caption("Monitora i palinsesti e le notizie dai principali programmi televisivi italiani.")
 
     file_tv = "ospiti_tv.csv"
     if os.path.exists(file_tv):
@@ -688,57 +688,4 @@ elif piattaforma == "📺 Palinsesto Ospiti TV":
             # Elimina righe con date non valide e ordina dalla più recente
             df_tv_sorted = df_tv.dropna(subset=['Data_dt']).sort_values(by='Data_dt', ascending=False)
             
-            # Creazione menu a tendina laterale per le date
-            date_disponibili = sorted(df_tv_sorted['Data_dt'].dt.date.unique(), reverse=True)
-            
-            if len(date_disponibili) > 0:
-                st.sidebar.header("Filtri Palinsesto")
-                data_selezionata = st.sidebar.selectbox("Vai al giorno:", ["Tutti i giorni"] + list(date_disponibili))
-                
-                # Visualizzazione raggruppata a "Calendario"
-                for data_corrente, group in df_tv_sorted.groupby('Data_dt', sort=False):
-                    
-                    # Salta se c'è un filtro attivo e la data non corrisponde
-                    if data_selezionata != "Tutti i giorni" and data_corrente.date() != data_selezionata:
-                        continue
-                        
-                    giorno_str = data_corrente.strftime('%d/%m/%Y')
-                    st.header(f"🗓️ {giorno_str}")
-                    
-                    for index, row in group.iterrows():
-                        with st.container(border=True):
-                            c1, c2 = st.columns([1, 4])
-                            
-                            # 1. Colonna Immagine
-                            with c1:
-                                img_url = str(row.get('Immagine', 'N/D'))
-                                if img_url and img_url.startswith('http'):
-                                    st.image(img_url, use_container_width=True)
-                                else:
-                                    st.markdown("<div style='height: 120px; display: flex; justify-content: center; align-items: center; background-color: #f8f9fa; border-radius: 5px; color: gray;'>📺 Nessuna Immagine</div>", unsafe_allow_html=True)
-                            
-                            # 2. Colonna Testo
-                            with c2:
-                                st.subheader(row['Titolo'])
-                                ospiti = row.get('Ospiti', 'Nessun ospite citato')
-                                link = row.get('Link', '#')
-                                desc_completa = str(row.get('Descrizione_Completa', ''))
-                                
-                                # Solo gli ospiti in grassetto senza etichette
-                                st.markdown(f"**{ospiti}**")
-                                
-                                # Descrizione integrale sempre visibile
-                                if desc_completa != "nan" and len(desc_completa) > 5:
-                                    st.write(desc_completa)
-                                
-                                # Solo il link per approfondire, niente autore
-                                st.caption(f"[➡️ Leggi la notizia completa]({link})")
-                                
-                    st.markdown("---")
-            else:
-                st.info("Nessuna data valida trovata nel database.")
-                
-        except Exception as e:
-            st.error(f"Errore nella lettura dei dati TV: {e}")
-    else:
-        st.warning("⚠️ Dati TV non ancora disponibili. Attendi che lo scraper generi il file 'ospiti_tv.csv'.")
+            # Creazione menu a tend
