@@ -276,7 +276,8 @@ st.sidebar.header("Strumenti")
 piattaforma = st.sidebar.radio("Scegli servizio:", [
     "🆕 Novità saggistica (30 giorni)", 
     "🔍 Scouting Amazon",
-    "🌍 Mercato Internazionale"
+    "🌍 Mercato Internazionale",
+    "📺 Palinsesto Ospiti TV"
 ])
 st.sidebar.markdown("---")
 
@@ -668,3 +669,70 @@ elif piattaforma == "🌍 Mercato Internazionale":
 
         with tab_novita: renderizza_lista_estera(df_novita, 'limite_estero_novita', 'novita_tab')
         with tab_bestseller: renderizza_lista_estera(df_bestseller, 'limite_estero_best', 'best_tab')
+
+# ==========================================
+# SEZIONE 4: PALINSESTO OSPITI TV
+# ==========================================
+elif piattaforma == "📺 Palinsesto Ospiti TV":
+    st.title("📅 Agenda Ospiti e Programmi TV")
+    st.caption("Monitora i palinsesti e scopri gli ospiti dei principali programmi televisivi italiani.")
+
+    file_tv = "ospiti_tv.csv"
+    if os.path.exists(file_tv):
+        try:
+            df_tv = pd.read_csv(file_tv)
+            
+            # Parsing della data italiana (gg/mm/aaaa)
+            df_tv['Data_dt'] = pd.to_datetime(df_tv['Data'], format='%d/%m/%Y', errors='coerce')
+            
+            # Elimina righe con date non valide e ordina dalla più recente
+            df_tv_sorted = df_tv.dropna(subset=['Data_dt']).sort_values(by='Data_dt', ascending=False)
+            
+            # Creazione menu a tendina laterale per le date
+            date_disponibili = sorted(df_tv_sorted['Data_dt'].dt.date.unique(), reverse=True)
+            
+            if len(date_disponibili) > 0:
+                st.sidebar.header("Filtri Palinsesto")
+                data_selezionata = st.sidebar.selectbox("Vai al giorno:", ["Tutti i giorni"] + list(date_disponibili))
+                
+                # Visualizzazione raggruppata a "Calendario"
+                for data_corrente, group in df_tv_sorted.groupby('Data_dt', sort=False):
+                    
+                    # Salta se c'è un filtro attivo e la data non corrisponde
+                    if data_selezionata != "Tutti i giorni" and data_corrente.date() != data_selezionata:
+                        continue
+                        
+                    giorno_str = data_corrente.strftime('%d/%m/%Y')
+                    st.header(f"🗓️ {giorno_str}")
+                    
+                    for index, row in group.iterrows():
+                        with st.container(border=True):
+                            c1, c2 = st.columns([1, 4])
+                            with c1:
+                                img_url = str(row.get('Immagine', 'N/D'))
+                                if img_url and img_url.startswith('http'):
+                                    st.image(img_url, use_container_width=True)
+                                else:
+                                    st.markdown("<div style='height: 120px; display: flex; justify-content: center; align-items: center; background-color: #f8f9fa; border-radius: 5px; color: gray;'>📺 Nessuna Immagine</div>", unsafe_allow_html=True)
+                            
+                            with c2:
+                                st.subheader(row['Titolo'])
+                                autore = row.get('Autore', 'N/D')
+                                ospiti = row.get('Ospiti', 'Nessun ospite citato')
+                                link = row.get('Link', '#')
+                                
+                                st.markdown(f"**Ospiti / Anticipazioni:** {ospiti}")
+                                st.caption(f"✍️ di {autore} | [➡️ Leggi la notizia completa]({link})")
+                                
+                                desc_completa = str(row.get('Descrizione_Completa', ''))
+                                if len(desc_completa) > 5 and desc_completa != "nan":
+                                    with st.expander("📖 Leggi descrizione integrale"):
+                                        st.write(desc_completa)
+                    st.markdown("---")
+            else:
+                st.info("Nessuna data valida trovata nel database.")
+                
+        except Exception as e:
+            st.error(f"Errore nella lettura dei dati TV: {e}")
+    else:
+        st.warning("⚠️ Dati TV non ancora disponibili. Attendi che lo scraper generi il file 'ospiti_tv.csv'.")
