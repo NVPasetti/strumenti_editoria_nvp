@@ -24,20 +24,19 @@ jobs:
       with:
         python-version: '3.11'
 
-    - name: Installazione Dipendenze e Sistema
+    - name: Installazione dipendenze
       run: |
-        sudo apt-get update
-        sudo apt-get install -y xvfb
         python -m pip install --upgrade pip
-        pip install pandas beautifulsoup4 selenium webdriver-manager undetected-chromedriver
+        # Aggiunto curl_cffi per bypassare DataDome sui siti francesi
+        pip install pandas beautifulsoup4 selenium webdriver-manager curl_cffi
 
     - name: Esecuzione Scraper Internazionali (Include Big 5 + NYT)
-      # L'americano usa Selenium puro
+      # L'americano rimane su Selenium (funziona)
       run: python scraper_internazionali.py
 
     - name: Esecuzione Scraper Decitre
-      # Il francese usa undetected-chromedriver dentro il monitor virtuale
-      run: xvfb-run --auto-servernum python scraper_decitre.py
+      # Il francese ora usa richieste stealth superveloci
+      run: python scraper_decitre.py
 
     - name: Commit e Push dei risultati
       run: |
@@ -45,5 +44,9 @@ jobs:
         git config --local user.name "GitHub Action"
         git add dati_internazionali.csv dati_decitre_scraper.csv
         git commit -m "Aggiornamento automatico dati: $(date +'%Y-%m-%d')" || true
-        git pull --rebase origin main
+        
+        # RISOLUZIONE CONFLITTI: Disattiva il rebase e in caso di scontro fa vincere il CSV del bot (-X ours)
+        git config pull.rebase false
+        git pull origin main -X ours
+        
         git push
