@@ -6,7 +6,7 @@ import random
 import os
 from datetime import datetime
 from bs4 import BeautifulSoup
-import undetected_chromedriver as uc
+from curl_cffi import requests
 
 if sys.stdout.encoding != 'utf-8':
     try:
@@ -19,68 +19,35 @@ URL_BESTSELLERS = "https://www.decitre.fr/livres/arts-societe-sciences-humaines/
 PAGINE_BESTSELLERS = 3
 CSV_FILENAME = "dati_decitre_scraper.csv"
 
-# --- CONFIGURAZIONE DRIVER UNDETECTED ---
-def get_driver():
-    options = uc.ChromeOptions()
-    options.add_argument('--no-sandbox')
-    options.add_argument('--disable-dev-shm-usage')
-    options.add_argument('--disable-gpu')
-    options.add_argument('--window-size=1920,1080')
-    
-    # Headless=False + Xvfb (dallo YAML) è la combinazione fatale per DataDome
-    driver = uc.Chrome(options=options, headless=False)
-    return driver
+def get_stealth_session():
+    """Crea una sessione che simula perfettamente l'impronta di Chrome 120 per ingannare DataDome"""
+    session = requests.Session(impersonate="chrome120")
+    session.headers.update({
+        "Accept-Language": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Referer": "https://www.google.fr/"
+    })
+    return session
 
-def gestisci_sicurezza(driver):
-    """Controlla difese antibot e attende"""
-    html = driver.page_source
-    soup = BeautifulSoup(html, 'html.parser')
-    testo_pagina = soup.text.lower()
-    
-    if "just a moment" in testo_pagina or "cloudflare" in testo_pagina or "verify you are human" in testo_pagina or "datadome" in testo_pagina:
-        print("\n🛑 [SISTEMA DI SICUREZZA RILEVATO] Tento di attendere la risoluzione automatica.")
-        
-        for _ in range(5):
-            time.sleep(3)
-            html_check = driver.page_source
-            testo_check = BeautifulSoup(html_check, 'html.parser').text.lower()
-            if "just a moment" not in testo_check and "verify you are human" not in testo_check and "datadome" not in testo_check:
-                print("✅ [VIA LIBERA] Blocco superato in automatico!")
-                time.sleep(8) 
-                return driver.page_source
-    return html
+def controlla_blocco(html):
+    testo = html.lower()
+    if "just a moment" in testo or "datadome" in testo or "verify you are human" in testo:
+        print("\n⚠️ Attenzione: DataDome ha intercettato la richiesta. IP momentaneamente flaggato.")
+        return True
+    return False
 
-def get_single_book_details(driver, book_url):
+def get_single_book_details(session, book_url):
     dettagli = {"Publisher": "N/D", "Descrizione": "N/D", "Autore": "N/D"}
     if not book_url: return dettagli
     
     try:
-        driver.get(book_url)
-        time.sleep(random.uniform(3.0, 5.0))
-        gestisci_sicurezza(driver)
+        time.sleep(random.uniform(2.0, 4.0))
+        response = session.get(book_url)
+        if controlla_blocco(response.text):
+            return dettagli
+            
+        soup = BeautifulSoup(response.text, 'html.parser')
         
-        driver.execute_script("window.scrollTo(0, 400);")
-        time.sleep(1.0)
-        driver.execute_script("window.scrollTo(0, 800);")
-        time.sleep(1.0)
-
-        driver.execute_script("""
-            let btnEditore = document.querySelector('div.product-summary-caracteristics button');
-            if (btnEditore) btnEditore.click();
-        """)
-        
-        driver.execute_script("""
-            let bottoni = document.querySelectorAll('button');
-            bottoni.forEach(b => {
-                if(b.textContent.toLowerCase().includes('voir plus') || b.textContent.toLowerCase().includes('lire la suite')) {
-                    b.click();
-                }
-            });
-        """)
-        
-        time.sleep(1.5)
-        soup = BeautifulSoup(driver.page_source, 'html.parser')
-        
+        # 1. ESTRAZIONE SINOSSI
         resume_title = soup.find(lambda tag: tag.name in ['h3', 'div'] and 'résumé' in tag.get_text(strip=True).lower())
         if resume_title:
             desc_content = resume_title.find_next_sibling('div')
@@ -89,6 +56,7 @@ def get_single_book_details(driver, book_url):
             desc_div = soup.find('div', id='description') or soup.find(class_=re.compile(r'description'))
             if desc_div: dettagli["Descrizione"] = desc_div.get_text(separator=' ', strip=True)
 
+        # 2. ESTRAZIONE EDITORE
         for tag in soup.find_all(['li', 'div', 'tr']):
             testo = tag.get_text(strip=True).lower()
             if "éditeur" in testo or "editeur" in testo:
@@ -96,6 +64,7 @@ def get_single_book_details(driver, book_url):
                 dettagli["Publisher"] = re.sub(r'(?i)éditeurs?|editeurs?|\:', '', valore).strip()
                 break
 
+        # 3. ESTRAZIONE AUTORE
         for tag in soup.find_all(class_=re.compile(r'author', re.I)):
             autore_testo = tag.get_text(strip=True)
             if 2 < len(autore_testo) < 100 and "Centre de" not in autore_testo and "cookies" not in autore_testo.lower():
@@ -107,16 +76,13 @@ def get_single_book_details(driver, book_url):
         print(f"  [Errore estrazione dettagli: {e}]")
         return dettagli
 
-def parse_list_page(driver, url):
-    driver.get(url)
-    time.sleep(random.uniform(4.0, 6.0)) 
-    gestisci_sicurezza(driver)
-    
-    for _ in range(3):
-        driver.execute_script("window.scrollBy(0, document.body.scrollHeight/3);")
-        time.sleep(1.5)
+def parse_list_page(session, url):
+    time.sleep(random.uniform(3.0, 5.0))
+    response = session.get(url)
+    if controlla_blocco(response.text):
+        return []
 
-    soup = BeautifulSoup(driver.page_source, 'html.parser')
+    soup = BeautifulSoup(response.text, 'html.parser')
     books = []
     visti_href = set()
     
@@ -158,7 +124,7 @@ def salva_dati(dizionario_libri):
     return 0
 
 def main():
-    print("=== START DECITRE SCRAPER (UNDETECTED SELENIUM MODE) ===")
+    print("=== START DECITRE SCRAPER (STEALTH REQUESTS MODE) ===")
     
     all_books_dict = {}
     old_data = set() 
@@ -187,7 +153,7 @@ def main():
     else:
         print("🌱 Nessun archivio trovato. Verrà creato un database francese oggi.")
 
-    driver = get_driver()
+    session = get_stealth_session()
     
     pagine_da_visitare = [{"nome": "Novità", "url": URL_NOUVEAUTES}]
     for p in range(1, PAGINE_BESTSELLERS + 1):
@@ -197,7 +163,7 @@ def main():
         nuovi_estratti_totali = 0
         for pagina_target in pagine_da_visitare:
             print(f"\n--- 📖 LETTURA VETRINA: {pagina_target['nome'].upper()} ---")
-            libri_nella_pagina = parse_list_page(driver, pagina_target['url'])
+            libri_nella_pagina = parse_list_page(session, pagina_target['url'])
             
             if not libri_nella_pagina:
                 print(f"Nessun libro trovato in {pagina_target['nome']}.")
@@ -214,10 +180,9 @@ def main():
                 
                 nuovi_nella_pagina += 1
                 nuovi_estratti_totali += 1
-                time.sleep(random.uniform(2.0, 4.0))
                 print(f"  [{idx}/{len(libri_nella_pagina)}] 🆕 Sfoglio: {book['Titolo'][:30]}...")
                 
-                dettagli = get_single_book_details(driver, book['Link'])
+                dettagli = get_single_book_details(session, book['Link'])
                 if dettagli["Autore"] != "N/D": book['Autore'] = dettagli["Autore"]
                     
                 book['Editore'], book['Descrizione'], book['Data_Aggiunta'], book['Nuovo'], book['Categoria'] = dettagli['Publisher'], dettagli['Descrizione'], oggi_str, True, pagina_target['nome']
@@ -225,16 +190,12 @@ def main():
                 all_books_dict[uid_provvisorio] = book
                 old_data.add(uid_provvisorio) 
                 salva_dati(all_books_dict)
-                time.sleep(random.uniform(1.0, 2.5))
                 
             print(f"💾 Elaborazione {pagina_target['nome']} completata. {nuovi_nella_pagina} aggiunti.")
-            time.sleep(random.uniform(5.0, 8.0))
 
     except Exception as e:
         print(f"\nErrore inaspettato: {e}")
-    finally:
-        driver.quit()
-
+        
     print(f"\n🎉 OPERAZIONE CONCLUSA. {nuovi_estratti_totali} NUOVI libri aggiunti oggi!")
 
 if __name__ == "__main__":
