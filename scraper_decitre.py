@@ -6,10 +6,7 @@ import random
 import os
 from datetime import datetime
 from bs4 import BeautifulSoup
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
-from webdriver_manager.chrome import ChromeDriverManager
+import undetected_chromedriver as uc
 
 if sys.stdout.encoding != 'utf-8':
     try:
@@ -22,26 +19,16 @@ URL_BESTSELLERS = "https://www.decitre.fr/livres/arts-societe-sciences-humaines/
 PAGINE_BESTSELLERS = 3
 CSV_FILENAME = "dati_decitre_scraper.csv"
 
-# --- CONFIGURAZIONE DRIVER STEALTH ---
+# --- CONFIGURAZIONE DRIVER UNDETECTED ---
 def get_driver():
-    options = Options()
-    options.add_argument('--headless=new')
+    options = uc.ChromeOptions()
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
     options.add_argument('--disable-gpu')
     options.add_argument('--window-size=1920,1080')
-    options.add_argument('--disable-blink-features=AutomationControlled')
-    options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
-    options.add_experimental_option("excludeSwitches", ["enable-automation"])
-    options.add_experimental_option('useAutomationExtension', False)
-
-    service = Service(ChromeDriverManager().install())
-    driver = webdriver.Chrome(service=service, options=options)
-
-    # Rimuove il flag webdriver
-    driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
-        'source': '''Object.defineProperty(navigator, 'webdriver', { get: () => undefined })'''
-    })
+    
+    # Headless=False + Xvfb (dallo YAML) è la combinazione fatale per DataDome
+    driver = uc.Chrome(options=options, headless=False)
     return driver
 
 def gestisci_sicurezza(driver):
@@ -171,7 +158,7 @@ def salva_dati(dizionario_libri):
     return 0
 
 def main():
-    print("=== START DECITRE SCRAPER (SELENIUM GITHUB MODE) ===")
+    print("=== START DECITRE SCRAPER (UNDETECTED SELENIUM MODE) ===")
     
     all_books_dict = {}
     old_data = set() 
