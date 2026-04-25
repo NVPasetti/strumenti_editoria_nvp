@@ -359,7 +359,7 @@ if piattaforma == "🆕 Novità saggistica (30 giorni)":
 
         # --- NUOVA SEZIONE: ARCHIVIO AUTORI ---
         num_autori = len(st.session_state.autori_monitorati)
-        with st.sidebar.expander(f"✍️ Autori in Archivio Storico ({num_autori})"):
+        with st.sidebar.expander(f"✍️ Storico autori salvati ({num_autori})"):
             if num_autori == 0:
                 st.caption("Nessun autore salvato finora.")
             else:
