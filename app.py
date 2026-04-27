@@ -4,7 +4,7 @@ import os
 import datetime
 import re
 from supabase import create_client, Client
-from google import genai
+import google.generativeai as genai
 
 # --- CONFIGURAZIONE PAGINA ---
 st.set_page_config(page_title="Strumenti Editoriali", layout="wide", page_icon="📚")
@@ -24,9 +24,10 @@ except Exception as e:
 
 # --- INIZIALIZZAZIONE GEMINI ---
 try:
-    client_gemini = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
+    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+    model_gemini = genai.GenerativeModel('gemini-1.5-flash')
 except Exception:
-    client_gemini = None
+    model_gemini = None
 
 # --- FUNZIONI DATABASE AMAZON (WISHLIST) ---
 def carica_preferiti_db():
@@ -267,7 +268,7 @@ piattaforma = st.sidebar.radio("Scegli servizio:", [
     "🆕 Novità saggistica (30 giorni)", 
     "🔍 Scouting Amazon",
     "🌍 Mercato Internazionale",
-    "📺 Palinsesto Ospiti TV"
+    "📺 Palinsesto Programmi TV"
 ])
 st.sidebar.markdown("---")
 
@@ -277,7 +278,7 @@ if 'messaggi_gemini' not in st.session_state:
     st.session_state.messaggi_gemini = []
 
 with st.sidebar.expander("💬 Fai una domanda", expanded=False):
-    if client_gemini:
+    if model_gemini:
         for msg in st.session_state.messaggi_gemini:
             with st.chat_message(msg["role"]):
                 st.markdown(msg["content"])
@@ -292,10 +293,7 @@ with st.sidebar.expander("💬 Fai una domanda", expanded=False):
             with st.chat_message("assistant"):
                 with st.spinner("Sto pensando..."):
                     try:
-                        risposta = client_gemini.models.generate_content(
-                            model='gemini-2.5-flash',
-                            contents=prompt,
-                        )
+                        risposta = model_gemini.generate_content(prompt)
                         testo_risposta = risposta.text
                         st.markdown(testo_risposta)
                         st.session_state.messaggi_gemini.append({"role": "assistant", "content": testo_risposta})
@@ -690,58 +688,65 @@ elif piattaforma == "🌍 Mercato Internazionale":
         with tab_bestseller: renderizza_lista_estera(df_bestseller, 'limite_estero_best', 'best_tab')
 
 # ==========================================
-# SEZIONE 4: PALINSESTO OSPITI TV
+# SEZIONE 4: PALINSESTO PROGRAMMI TV
 # ==========================================
-elif piattaforma == "📺 Palinsesto Ospiti TV":
-    st.title("📅 Agenda Ospiti e Programmi TV")
-    st.caption("Monitora i palinsesti. I nomi degli ospiti sono estratti automaticamente tramite AI.")
+elif piattaforma == "📺 Palinsesto Programmi TV":
+    st.title("📅 Agenda Programmi TV")
+    st.caption("Monitora i palinsesti e scopri i dettagli dei principali programmi televisivi italiani.")
 
     file_tv = "ospiti_tv.csv"
     if os.path.exists(file_tv):
         try:
             df_tv = pd.read_csv(file_tv)
             
+            # Parsing della data italiana (gg/mm/aaaa)
             df_tv['Data_dt'] = pd.to_datetime(df_tv['Data'], format='%d/%m/%Y', errors='coerce')
+            
+            # Elimina righe con date non valide e ordina dalla più recente
             df_tv_sorted = df_tv.dropna(subset=['Data_dt']).sort_values(by='Data_dt', ascending=False)
             
+            # Creazione menu a tendina laterale per le date
             date_disponibili = sorted(df_tv_sorted['Data_dt'].dt.date.unique(), reverse=True)
             
             if len(date_disponibili) > 0:
                 st.sidebar.header("Filtri Palinsesto")
                 data_selezionata = st.sidebar.selectbox("Vai al giorno:", ["Tutti i giorni"] + list(date_disponibili))
                 
+                # Visualizzazione raggruppata a "Calendario"
                 for data_corrente, group in df_tv_sorted.groupby('Data_dt', sort=False):
+                    
+                    # Salta se c'è un filtro attivo e la data non corrisponde
                     if data_selezionata != "Tutti i giorni" and data_corrente.date() != data_selezionata:
                         continue
                         
-                    st.header(f"🗓️ {data_corrente.strftime('%d/%m/%Y')}")
+                    giorno_str = data_corrente.strftime('%d/%m/%Y')
+                    st.header(f"🗓️ {giorno_str}")
                     
                     for index, row in group.iterrows():
                         with st.container(border=True):
                             c1, c2 = st.columns([1, 4])
                             
+                            # 1. Colonna Immagine
                             with c1:
-                                img = str(row.get('Immagine', 'N/D'))
-                                if img.startswith('http'):
-                                    st.image(img, use_container_width=True)
+                                img_url = str(row.get('Immagine', 'N/D'))
+                                if img_url and img_url.startswith('http'):
+                                    st.image(img_url, use_container_width=True)
                                 else:
-                                    st.markdown("<div style='height:100px; background:#f0f2f6; border-radius:5px; display:flex; align-items:center; justify-content:center;'>📺 No Img</div>", unsafe_allow_html=True)
+                                    st.markdown("<div style='height: 120px; display: flex; justify-content: center; align-items: center; background-color: #f8f9fa; border-radius: 5px; color: gray;'>📺 Nessuna Immagine</div>", unsafe_allow_html=True)
                             
+                            # 2. Colonna Testo (Solo Titolo, Descrizione integrale e Link)
                             with c2:
                                 st.subheader(row['Titolo'])
-                                
-                                # Ospiti estratti da AI in grassetto e senza etichetta
-                                ospiti_ai = str(row.get('Ospiti', 'N/D'))
-                                if ospiti_ai not in ["N/D", "nan", "Nessun ospite citato", "Errore AI"] and ospiti_ai.strip() != "":
-                                    st.markdown(f"**{ospiti_ai}**")
+                                link = row.get('Link', '#')
+                                desc_completa = str(row.get('Descrizione_Completa', ''))
                                 
                                 # Descrizione integrale sempre visibile
-                                desc = str(row.get('Descrizione_Completa', ''))
-                                if desc not in ["nan", "N/D"] and len(desc) > 5:
-                                    st.write(desc)
+                                if desc_completa != "nan" and len(desc_completa) > 5:
+                                    st.write(desc_completa)
                                 
-                                # Solo il link per leggere di più (senza autore)
-                                st.caption(f"[➡️ Leggi la notizia completa]({row.get('Link', '#')})")
+                                # Solo il link per approfondire (senza autore)
+                                st.caption(f"[➡️ Leggi la notizia completa]({link})")
+                                
                     st.markdown("---")
             else:
                 st.info("Nessuna data valida trovata nel database.")
