@@ -675,66 +675,60 @@ elif piattaforma == "🌍 Mercato Internazionale":
 # ==========================================
 elif piattaforma == "📺 Palinsesto Ospiti TV":
     st.title("📅 Agenda Ospiti e Programmi TV")
-    st.caption("Monitora i palinsesti e le notizie dai principali programmi televisivi italiani.")
+    st.caption("Monitora i palinsesti. I nomi degli ospiti sono estratti automaticamente tramite AI.")
 
     file_tv = "ospiti_tv.csv"
     if os.path.exists(file_tv):
         try:
             df_tv = pd.read_csv(file_tv)
-            
-            # Parsing della data italiana (gg/mm/aaaa)
             df_tv['Data_dt'] = pd.to_datetime(df_tv['Data'], format='%d/%m/%Y', errors='coerce')
-            
-            # Elimina righe con date non valide e ordina dalla più recente
             df_tv_sorted = df_tv.dropna(subset=['Data_dt']).sort_values(by='Data_dt', ascending=False)
             
-            # Creazione menu a tendina laterale per le date
             date_disponibili = sorted(df_tv_sorted['Data_dt'].dt.date.unique(), reverse=True)
-            
             if len(date_disponibili) > 0:
                 st.sidebar.header("Filtri Palinsesto")
                 data_selezionata = st.sidebar.selectbox("Vai al giorno:", ["Tutti i giorni"] + list(date_disponibili))
                 
-                # Visualizzazione raggruppata a "Calendario"
                 for data_corrente, group in df_tv_sorted.groupby('Data_dt', sort=False):
-                    
-                    # Salta se c'è un filtro attivo e la data non corrisponde
                     if data_selezionata != "Tutti i giorni" and data_corrente.date() != data_selezionata:
                         continue
                         
-                    giorno_str = data_corrente.strftime('%d/%m/%Y')
-                    st.header(f"🗓️ {giorno_str}")
+                    st.header(f"🗓️ {data_corrente.strftime('%d/%m/%Y')}")
                     
                     for index, row in group.iterrows():
                         with st.container(border=True):
                             c1, c2 = st.columns([1, 4])
                             
-                            # 1. Colonna Immagine
+                            # 1. Immagine
                             with c1:
-                                img_url = str(row.get('Immagine', 'N/D'))
-                                if img_url and img_url.startswith('http'):
-                                    st.image(img_url, use_container_width=True)
+                                img = str(row.get('Immagine', 'N/D'))
+                                if img.startswith('http'):
+                                    st.image(img, use_container_width=True)
                                 else:
-                                    st.markdown("<div style='height: 120px; display: flex; justify-content: center; align-items: center; background-color: #f8f9fa; border-radius: 5px; color: gray;'>📺 Nessuna Immagine</div>", unsafe_allow_html=True)
+                                    st.markdown("<div style='height:100px; background:#f0f2f6; border-radius:5px; display:flex; align-items:center; justify-content:center;'>📺 No Img</div>", unsafe_allow_html=True)
                             
-                            # 2. Colonna Testo (Solo Titolo, Descrizione integrale e Link)
+                            # 2. Testo
                             with c2:
                                 st.subheader(row['Titolo'])
-                                link = row.get('Link', '#')
-                                desc_completa = str(row.get('Descrizione_Completa', ''))
                                 
-                                # Descrizione integrale sempre visibile
-                                if desc_completa != "nan" and len(desc_completa) > 5:
-                                    st.write(desc_completa)
+                                # --- NOMI OSPITI ESTRATTI DALL'AI (SENZA ETICHETTA) ---
+                                ospiti_ai = str(row.get('Ospiti', 'N/D'))
+                                if ospiti_ai not in ["N/D", "nan", "Nessun ospite citato", "Errore AI"] and ospiti_ai.strip() != "":
+                                    st.markdown(f"**{ospiti_ai}**")
                                 
-                                # Solo il link per approfondire (senza autore)
-                                st.caption(f"[➡️ Leggi la notizia completa]({link})")
+                                # Descrizione sempre visibile
+                                desc = str(row.get('Descrizione_Completa', ''))
+                                if desc not in ["nan", "N/D"] and len(desc) > 5:
+                                    st.write(desc)
                                 
+                                # Link
+                                st.caption(f"[➡️ Leggi notizia completa]({row.get('Link', '#')})")
                     st.markdown("---")
             else:
-                st.info("Nessuna data valida trovata nel database.")
-                
+                st.info("Nessun dato TV disponibile.")
         except Exception as e:
-            st.error(f"Errore nella lettura dei dati TV: {e}")
+            st.error(f"Errore lettura CSV TV: {e}")
+    else:
+        st.warning("File 'ospiti_tv.csv' non trovato. Attendi l'aggiornamento dello scraper.")
     else:
         st.warning("⚠️ Dati TV non ancora disponibili. Attendi che lo scraper generi il file 'ospiti_tv.csv'.")
