@@ -12,8 +12,10 @@ jobs:
       with:
         python-version: '3.11'
     - name: Installazione dipendenze
-      run: pip install pandas beautifulsoup4 curl_cffi
+      run: pip install pandas beautifulsoup4 curl_cffi google-generativeai
     - name: Run Scraper
+      env:
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       run: python scraper_tv.py
     - name: Push Risultati
       run: |
