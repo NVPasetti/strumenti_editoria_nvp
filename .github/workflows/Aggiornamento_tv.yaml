@@ -19,9 +19,9 @@ jobs:
       run: python scraper_tv.py
     - name: Push Risultati
       run: |
-        git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action"
+        git config --global user.email "action@github.com"
+        git config --global user.name "GitHub Action"
+        git pull origin main --rebase
         git add ospiti_tv.csv
-        git commit -m "Update TV: $(date +'%Y-%m-%d %H:%M')" || true
-        git pull --rebase
-        git push
+        git commit -m "Update TV: $(date +'%Y-%m-%d %H:%M')" || echo "Nessun nuovo dato da salvare"
+        git push origin main
