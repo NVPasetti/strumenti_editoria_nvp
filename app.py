@@ -4,6 +4,7 @@ import os
 import datetime
 import re
 from supabase import create_client, Client
+from google import genai
 
 # --- CONFIGURAZIONE PAGINA ---
 st.set_page_config(page_title="Strumenti Editoriali", layout="wide", page_icon="📚")
@@ -20,6 +21,12 @@ try:
 except Exception as e:
     st.error(f"Errore di connessione a Supabase: {e}")
     supabase = None
+
+# --- INIZIALIZZAZIONE GEMINI ---
+try:
+    client_gemini = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
+except Exception:
+    client_gemini = None
 
 # --- FUNZIONI DATABASE AMAZON (WISHLIST) ---
 def carica_preferiti_db():
@@ -64,79 +71,62 @@ def svuota_salvati_db():
         except Exception:
             pass
 
-# --- FUNZIONI DATABASE IBS (REMINDERS 30 GIORNI) ---
+# --- FUNZIONI DATABASE IBS (REMINDERS) ---
 def carica_reminders_db():
     if supabase:
         try:
             risposta = supabase.table("reminders").select("*").execute()
             reminders_dict = {}
             for r in risposta.data:
-                autore_db = r.get("autore")
-                if not autore_db or str(autore_db).strip().lower() == "none":
-                    autore_db = "N/D"
-                
+                autore_db = r.get("autore") or "N/D"
                 reminders_dict[r["id"]] = {
                     "titolo": r["titolo"], 
                     "autore": autore_db, 
                     "data_scadenza": r["data_scadenza"]
                 }
             return reminders_dict
-        except Exception:
-            return {}
+        except Exception: return {}
     return {}
 
 def aggiungi_reminder_db(id_link, titolo, autore, data_scadenza):
     if supabase:
         try:
             supabase.table("reminders").insert({
-                "id": id_link, 
-                "titolo": titolo, 
-                "autore": autore,
-                "data_scadenza": data_scadenza
+                "id": id_link, "titolo": titolo, "autore": autore, "data_scadenza": data_scadenza
             }).execute()
-        except Exception as e:
-            st.toast("⚠️ Assicurati di aver aggiornato la tabella 'reminders' su Supabase!")
+        except Exception: pass
 
 def rimuovi_reminder_db(id_link):
     if supabase:
         try:
             supabase.table("reminders").delete().eq("id", id_link).execute()
-        except Exception:
-            pass
+        except Exception: pass
 
-# --- FUNZIONI DATABASE AUTORI MONITORATI ---
+# --- FUNZIONI DATABASE AUTORI ---
 def carica_autori_db():
     if supabase:
         try:
             risposta = supabase.table("autori_monitorati").select("autore").execute()
             return set(r["autore"] for r in risposta.data if r.get("autore"))
-        except Exception:
-            return set()
+        except Exception: return set()
     return set()
 
 def salva_autore_db(nome_autore):
     if supabase and nome_autore and nome_autore != "N/D":
         try:
             supabase.table("autori_monitorati").insert({"autore": nome_autore}).execute()
-        except Exception:
-            pass
+        except Exception: pass
 
 def rimuovi_autore_db(nome_autore):
     if supabase:
         try:
             supabase.table("autori_monitorati").delete().eq("autore", nome_autore).execute()
-        except Exception:
-            pass
+        except Exception: pass
 
 # --- INIZIALIZZAZIONE MEMORIA GLOBALE ---
-if 'libri_salvati' not in st.session_state:
-    st.session_state.libri_salvati = carica_preferiti_db()
-
-if 'reminders' not in st.session_state:
-    st.session_state.reminders = carica_reminders_db()
-
-if 'autori_monitorati' not in st.session_state:
-    st.session_state.autori_monitorati = carica_autori_db()
+if 'libri_salvati' not in st.session_state: st.session_state.libri_salvati = carica_preferiti_db()
+if 'reminders' not in st.session_state: st.session_state.reminders = carica_reminders_db()
+if 'autori_monitorati' not in st.session_state: st.session_state.autori_monitorati = carica_autori_db()
 
 def toggle_salvataggio(item_id):
     if item_id in st.session_state.libri_salvati:
@@ -146,16 +136,16 @@ def toggle_salvataggio(item_id):
         st.session_state.libri_salvati[item_id] = ""
         salva_preferito_db(item_id)
 
-# --- FUNZIONI DI CARICAMENTO E PARSING DATI ---
+# --- UTILITIES CARICAMENTO DATI ---
 def parse_amazon_date(date_str):
     if not date_str or pd.isna(date_str): return None
-    mesi_it = {'gen': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'mag': 5, 'giu': 6, 'lug': 7, 'ago': 8, 'set': 9, 'ott': 10, 'nov': 11, 'dic': 12, 'gennaio': 1, 'febbraio': 2, 'marzo': 3, 'aprile': 4, 'maggio': 5, 'giugno': 6, 'luglio': 7, 'agosto': 8, 'settembre': 9, 'ottobre': 10, 'novembre': 11, 'dicembre': 12}
+    mesi_it = {'gen': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'mag': 5, 'giu': 6, 'lug': 7, 'ago': 8, 'set': 9, 'ott': 10, 'nov': 11, 'dic': 12}
     try:
-        match = re.search(r'(\d{1,2})\s+([a-z]+)\.?\s+(\d{4})', str(date_str).lower())
+        match = re.search(r'(\d{1,2})\s+([a-z]+)', str(date_str).lower())
         if match:
-            d, m_str, y = int(match.group(1)), match.group(2).replace('.', ''), int(match.group(3))
-            m = mesi_it.get(m_str) or mesi_it.get(m_str[:3])
-            if m: return datetime.datetime(y, m, d)
+            d, m_str = int(match.group(1)), match.group(2)[:3]
+            m = mesi_it.get(m_str)
+            if m: return datetime.datetime(2024, m, d)
     except: pass
     return None
 
@@ -281,6 +271,41 @@ piattaforma = st.sidebar.radio("Scegli servizio:", [
 ])
 st.sidebar.markdown("---")
 
+# --- ASSISTENTE GEMINI ---
+st.sidebar.header("✨ Assistente Gemini")
+if 'messaggi_gemini' not in st.session_state:
+    st.session_state.messaggi_gemini = []
+
+with st.sidebar.expander("💬 Fai una domanda", expanded=False):
+    if client_gemini:
+        for msg in st.session_state.messaggi_gemini:
+            with st.chat_message(msg["role"]):
+                st.markdown(msg["content"])
+        
+        prompt = st.chat_input("Chiedimi un riassunto, un post social...")
+        
+        if prompt:
+            st.session_state.messaggi_gemini.append({"role": "user", "content": prompt})
+            with st.chat_message("user"):
+                st.markdown(prompt)
+                
+            with st.chat_message("assistant"):
+                with st.spinner("Sto pensando..."):
+                    try:
+                        risposta = client_gemini.models.generate_content(
+                            model='gemini-2.5-flash',
+                            contents=prompt,
+                        )
+                        testo_risposta = risposta.text
+                        st.markdown(testo_risposta)
+                        st.session_state.messaggi_gemini.append({"role": "assistant", "content": testo_risposta})
+                    except Exception as e:
+                        st.error(f"Errore di Gemini: {e}")
+    else:
+        st.caption("Configura la chiave GEMINI_API_KEY nei secrets per usare l'assistente.")
+
+st.sidebar.markdown("---")
+
 # ==========================================
 # SEZIONE 1: NOVITÀ SAGGISTICA (IBS)
 # ==========================================
@@ -358,7 +383,6 @@ if piattaforma == "🆕 Novità saggistica (30 giorni)":
                         st.rerun()
                     st.markdown("---")
 
-        # --- NUOVA SEZIONE: ARCHIVIO AUTORI ---
         num_autori = len(st.session_state.autori_monitorati)
         with st.sidebar.expander(f"✍️ Storico autori salvati ({num_autori})"):
             if num_autori == 0:
@@ -435,7 +459,6 @@ if piattaforma == "🆕 Novità saggistica (30 giorni)":
                                         st.session_state.reminders[link] = {"titolo": row['Titolo'], "autore": autore_libro, "data_scadenza": scadenza}
                                         aggiungi_reminder_db(link, row['Titolo'], autore_libro, scadenza)
                                         
-                                        # --- SALVATAGGIO AUTORE IN ARCHIVIO STORICO ---
                                         if autore_libro and autore_libro != "N/D":
                                             st.session_state.autori_monitorati.add(autore_libro)
                                             salva_autore_db(autore_libro)
@@ -495,7 +518,6 @@ if piattaforma == "🆕 Novità saggistica (30 giorni)":
                                     st.session_state.reminders[link] = {"titolo": row['Titolo'], "autore": autore_libro, "data_scadenza": scadenza}
                                     aggiungi_reminder_db(link, row['Titolo'], autore_libro, scadenza)
                                     
-                                    # --- SALVATAGGIO AUTORE IN ARCHIVIO STORICO ---
                                     if autore_libro and autore_libro != "N/D":
                                         st.session_state.autori_monitorati.add(autore_libro)
                                         salva_autore_db(autore_libro)
@@ -565,11 +587,9 @@ elif piattaforma == "🔍 Scouting Amazon":
         elif sel_cat_amz != "Tutte":
             df_base = df_base[df_base['Categoria'] == sel_cat_amz]
 
-        # Logica Tab 1 (Top): Rispetta lo slider e ordina per recensioni
         df_top = df_base[df_base['Recensioni'] >= max(60, min_rec_amz)].copy()
         df_top = df_top.sort_values(by='Recensioni', ascending=is_ascending_amz)
 
-        # Logica Tab 2 (Potenziale): >=35 e <60 recensioni + uscito ultimi 3 mesi
         oggi = datetime.datetime.now()
         limite_3_mesi = oggi - datetime.timedelta(days=90)
         
@@ -581,7 +601,6 @@ elif piattaforma == "🔍 Scouting Amazon":
             (df_base['data_dt'] >= limite_3_mesi)
         ].copy()
         
-        # Ordiniamo per data decrescente in modo da mostrare prima i più nuovi
         df_potenziale = df_potenziale.sort_values(by='data_dt', ascending=False)
 
         tab_top, tab_potenziale = st.tabs([f"🌟 Più recensioni ({len(df_top)})", f"🚀 Libri con potenziale ({len(df_potenziale)})"])
@@ -681,10 +700,12 @@ elif piattaforma == "📺 Palinsesto Ospiti TV":
     if os.path.exists(file_tv):
         try:
             df_tv = pd.read_csv(file_tv)
+            
             df_tv['Data_dt'] = pd.to_datetime(df_tv['Data'], format='%d/%m/%Y', errors='coerce')
             df_tv_sorted = df_tv.dropna(subset=['Data_dt']).sort_values(by='Data_dt', ascending=False)
             
             date_disponibili = sorted(df_tv_sorted['Data_dt'].dt.date.unique(), reverse=True)
+            
             if len(date_disponibili) > 0:
                 st.sidebar.header("Filtri Palinsesto")
                 data_selezionata = st.sidebar.selectbox("Vai al giorno:", ["Tutti i giorni"] + list(date_disponibili))
@@ -699,7 +720,6 @@ elif piattaforma == "📺 Palinsesto Ospiti TV":
                         with st.container(border=True):
                             c1, c2 = st.columns([1, 4])
                             
-                            # 1. Immagine
                             with c1:
                                 img = str(row.get('Immagine', 'N/D'))
                                 if img.startswith('http'):
@@ -707,28 +727,26 @@ elif piattaforma == "📺 Palinsesto Ospiti TV":
                                 else:
                                     st.markdown("<div style='height:100px; background:#f0f2f6; border-radius:5px; display:flex; align-items:center; justify-content:center;'>📺 No Img</div>", unsafe_allow_html=True)
                             
-                            # 2. Testo
                             with c2:
                                 st.subheader(row['Titolo'])
                                 
-                                # --- NOMI OSPITI ESTRATTI DALL'AI (SENZA ETICHETTA) ---
+                                # Ospiti estratti da AI in grassetto e senza etichetta
                                 ospiti_ai = str(row.get('Ospiti', 'N/D'))
                                 if ospiti_ai not in ["N/D", "nan", "Nessun ospite citato", "Errore AI"] and ospiti_ai.strip() != "":
                                     st.markdown(f"**{ospiti_ai}**")
                                 
-                                # Descrizione sempre visibile
+                                # Descrizione integrale sempre visibile
                                 desc = str(row.get('Descrizione_Completa', ''))
                                 if desc not in ["nan", "N/D"] and len(desc) > 5:
                                     st.write(desc)
                                 
-                                # Link
-                                st.caption(f"[➡️ Leggi notizia completa]({row.get('Link', '#')})")
+                                # Solo il link per leggere di più (senza autore)
+                                st.caption(f"[➡️ Leggi la notizia completa]({row.get('Link', '#')})")
                     st.markdown("---")
             else:
-                st.info("Nessun dato TV disponibile.")
+                st.info("Nessuna data valida trovata nel database.")
+                
         except Exception as e:
-            st.error(f"Errore lettura CSV TV: {e}")
-    else:
-        st.warning("File 'ospiti_tv.csv' non trovato. Attendi l'aggiornamento dello scraper.")
+            st.error(f"Errore nella lettura dei dati TV: {e}")
     else:
         st.warning("⚠️ Dati TV non ancora disponibili. Attendi che lo scraper generi il file 'ospiti_tv.csv'.")
