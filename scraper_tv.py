@@ -68,13 +68,19 @@ def scrape_ospiti_tv():
     print("📺 Avvio scraper incrementale DavideMaggio.it con AI...")
     session = get_stealth_session()
     
-    # Carica i dati vecchi per evitare di raschiare doppioni
-    if os.path.exists(CSV_FILENAME):
-        df_old = pd.read_csv(CSV_FILENAME)
-        link_visti = set(df_old['Link'].tolist())
-    else:
-        df_old = pd.DataFrame()
-        link_visti = set()
+    # --- FIX: GESTIONE FILE VUOTI (EmptyDataError) ---
+    df_old = pd.DataFrame()
+    link_visti = set()
+    
+    if os.path.exists(CSV_FILENAME) and os.path.getsize(CSV_FILENAME) > 0:
+        try:
+            df_old = pd.read_csv(CSV_FILENAME)
+            if 'Link' in df_old.columns:
+                link_visti = set(df_old['Link'].tolist())
+        except pd.errors.EmptyDataError:
+            print("⚠️ File CSV vuoto trovato, lo ricreo da zero.")
+            pass
+    # --------------------------------------------------
 
     nuovi_dati = []
     stop_scraping = False
@@ -155,7 +161,7 @@ def scrape_ospiti_tv():
             if page > 10: break # Massimo 10 pagine per sicurezza
             
         except Exception as e:
-            print(f"❌ Errore: {e}")
+            print(f"❌ Errore durante l'analisi: {e}")
             break
 
     if nuovi_dati:
