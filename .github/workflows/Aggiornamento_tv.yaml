@@ -23,4 +23,5 @@ jobs:
         git config --local user.name "GitHub Action"
         git add ospiti_tv.csv
         git commit -m "Update TV: $(date +'%Y-%m-%d %H:%M')" || true
+        git pull --rebase
         git push
