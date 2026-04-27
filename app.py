@@ -47,30 +47,26 @@ def salva_preferito_db(item_id):
     if supabase:
         try:
             supabase.table("wishlist").insert({"asin": item_id, "nota": ""}).execute()
-        except Exception:
-            pass
+        except Exception: pass
 
 def aggiorna_nota_db(item_id, nota_testo):
     if supabase:
         try:
             supabase.table("wishlist").update({"nota": nota_testo}).eq("asin", item_id).execute()
-        except Exception:
-            pass
+        except Exception: pass
 
 def rimuovi_preferito_db(item_id):
     if supabase:
         try:
             supabase.table("wishlist").delete().eq("asin", item_id).execute()
-        except Exception:
-            pass
+        except Exception: pass
 
 def svuota_salvati_db():
     st.session_state.libri_salvati.clear()
     if supabase:
         try:
             supabase.table("wishlist").delete().neq("asin", "dummy_value").execute()
-        except Exception:
-            pass
+        except Exception: pass
 
 # --- FUNZIONI DATABASE IBS (REMINDERS) ---
 def carica_reminders_db():
@@ -261,7 +257,7 @@ def mostra_griglia_libri(df_da_mostrare, limite_key, tab_id):
                 st.rerun()
 
 # ==========================================
-# SIDEBAR: NAVIGAZIONE PRINCIPALE
+# SIDEBAR: NAVIGAZIONE PRINCIPALE E ASSISTENTE
 # ==========================================
 st.sidebar.header("Strumenti")
 piattaforma = st.sidebar.radio("Scegli servizio:", [
@@ -734,17 +730,22 @@ elif piattaforma == "📺 Palinsesto Programmi TV":
                                 else:
                                     st.markdown("<div style='height: 120px; display: flex; justify-content: center; align-items: center; background-color: #f8f9fa; border-radius: 5px; color: gray;'>📺 Nessuna Immagine</div>", unsafe_allow_html=True)
                             
-                            # 2. Colonna Testo (Solo Titolo, Descrizione integrale e Link)
+                            # 2. Colonna Testo (Solo Titolo, Ospiti, Descrizione integrale e Link)
                             with c2:
                                 st.subheader(row['Titolo'])
-                                link = row.get('Link', '#')
+                                
+                                # Ospiti in grassetto, puliti
+                                ospiti_ai = str(row.get('Ospiti', 'N/D'))
+                                if ospiti_ai not in ["N/D", "nan", "Nessuno", "", "Nessun ospite citato", "Errore AI"]:
+                                    st.markdown(f"**Ospiti: {ospiti_ai}**")
+
                                 desc_completa = str(row.get('Descrizione_Completa', ''))
                                 
                                 # Descrizione integrale sempre visibile
                                 if desc_completa != "nan" and len(desc_completa) > 5:
                                     st.write(desc_completa)
                                 
-                                # Solo il link per approfondire (senza autore)
+                                link = row.get('Link', '#')
                                 st.caption(f"[➡️ Leggi la notizia completa]({link})")
                                 
                     st.markdown("---")
