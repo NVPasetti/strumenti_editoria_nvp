@@ -7,8 +7,17 @@ from bs4 import BeautifulSoup
 from curl_cffi import requests
 import google.generativeai as genai
 
+# --- FIX ENCODING ---
+if sys.stdout.encoding != 'utf-8':
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except AttributeError:
+        pass
+
+BASE_URL = "https://www.davidemaggio.it/programmi-tv"
+CSV_FILENAME = "ospiti_tv.csv"
+
 # --- CONFIGURAZIONE GEMINI ---
-# In locale usa la tua chiave, su GitHub Actions la prenderemo dai Secrets
 GEMINI_KEY = os.getenv("GEMINI_API_KEY") 
 if GEMINI_KEY:
     genai.configure(api_key=GEMINI_KEY)
@@ -17,28 +26,25 @@ else:
     model = None
 
 def estrai_ospiti_ai(titolo, descrizione):
-    """Chiede a Gemini di estrarre solo i nomi dei protagonisti/ospiti"""
+    """Chiede a Gemini di estrarre SOLO i nomi degli ospiti"""
     if not model:
-        return "AI non configurata"
+        return "N/D"
     
-    prompt = f"""
-    Analizza questo testo di un programma TV ed estrai SOLO i nomi delle persone (ospiti, conduttori o protagonisti).
-    Restituisci solo l'elenco dei nomi separati da virgola. 
-    Non aggiungere commenti, non scrivere frasi intere.
-    Se non trovi nomi di persone, scrivi 'N/D'.
-    
+    prompt = f"""Analizza questo testo di un programma TV ed estrai SOLO i nomi propri delle persone (ospiti, conduttori o protagonisti).
+    Restituisci solo l'elenco dei nomi separati da virgola. Non scrivere frasi intere.
+    Se non trovi nomi di persone, scrivi esattamente 'N/D'.
     Titolo: {titolo}
-    Testo: {descrizione}
-    """
+    Testo: {descrizione}"""
+    
     try:
+        time.sleep(1.5) # Pausa per non superare il limite di richieste gratuite
         response = model.generate_content(prompt)
-        return response.text.strip()
-    except:
-        return "Errore AI"
-
-# --- RESTO DELLO SCRAPER (BASE PRECEDENTE) ---
-URL_TARGET = "https://www.davidemaggio.it/programmi-tv"
-CSV_FILENAME = "ospiti_tv.csv"
+        res = response.text.strip()
+        # Pulizia per rimuovere "Ci sono", "Saranno ospiti" etc se Gemini li ha messi per sbaglio
+        res = re.sub(r'^(?:sono|saranno|c\'è|ci sarà|ci sono|ospiti:)\s+', '', res, flags=re.IGNORECASE).strip()
+        return res.capitalize() if res else "N/D"
+    except Exception:
+        return "N/D"
 
 def get_stealth_session():
     session = requests.Session(impersonate="chrome120")
@@ -46,7 +52,9 @@ def get_stealth_session():
     return session
 
 def get_date_from_article(session, url):
+    """Recupera la data mancante dall'interno dell'articolo tagliando l'orario"""
     try:
+        time.sleep(0.5)
         res = session.get(url)
         if res.status_code == 200:
             inner_soup = BeautifulSoup(res.text, 'html.parser')
@@ -57,9 +65,10 @@ def get_date_from_article(session, url):
     return "N/D"
 
 def scrape_ospiti_tv():
-    print("📺 Avvio scraper con supporto AI...")
+    print("📺 Avvio scraper incrementale DavideMaggio.it con AI...")
     session = get_stealth_session()
     
+    # Carica i dati vecchi per evitare di raschiare doppioni
     if os.path.exists(CSV_FILENAME):
         df_old = pd.read_csv(CSV_FILENAME)
         link_visti = set(df_old['Link'].tolist())
@@ -67,61 +76,95 @@ def scrape_ospiti_tv():
         df_old = pd.DataFrame()
         link_visti = set()
 
-    response = session.get(URL_TARGET)
-    soup = BeautifulSoup(response.text, 'html.parser')
-    
-    # Pulizia footer come concordato
-    paginazione = soup.find('ul', class_=re.compile(r'page-numbers'))
-    if paginazione:
-        for tag_sotto in paginazione.find_all_next(['h2', 'h3', 'h4', 'div', 'p']):
-            tag_sotto.decompose()
-
     nuovi_dati = []
-    titoli_tags = soup.find_all(['h2', 'h3', 'h4'], class_=re.compile(r'font-(?:extra)?bold'))
+    stop_scraping = False
+    page = 1
 
-    for tag in titoli_tags:
-        a_tag = tag.find('a')
-        if not a_tag: continue
-        link = a_tag['href']
-        if "/videogallery/" in link.lower() or link in link_visti: continue
+    while not stop_scraping:
+        url = f"{BASE_URL}/page/{page}" if page > 1 else BASE_URL
+        print(f"\n📄 Analizzo pagina {page}...")
+        
+        try:
+            response = session.get(url)
+            if response.status_code != 200: break
+            
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            # --- PULIZIA HTML ---
+            tendenza = soup.find(id='ora-in-tendenza')
+            if tendenza: tendenza.decompose()
+            paginazione = soup.find('ul', class_=re.compile(r'page-numbers'))
+            if paginazione:
+                for tag_sotto in paginazione.find_all_next(['h2', 'h3', 'h4', 'div', 'p']):
+                    tag_sotto.decompose()
 
-        titolo = a_tag.get_text(strip=True)
-        print(f"✨ Analizzo con AI: {titolo[:40]}...")
+            titoli_tags = soup.find_all(['h2', 'h3', 'h4'], class_=re.compile(r'font-(?:extra)?bold'))
+            if not titoli_tags: break
 
-        # Immagine
-        img_url = "N/D"
-        img_tag = soup.find('a', href=link).find('img') if soup.find('a', href=link) else None
-        if img_tag: img_url = img_tag.get('src') or img_tag.get('data-src') or "N/D"
+            for tag in titoli_tags:
+                a_tag = tag.find('a')
+                if not a_tag: continue
+                link = a_tag['href']
+                
+                if "/videogallery/" in link.lower(): continue
+                
+                # SE IL LINK ESISTE GIA', FERMA LO SCRAPER!
+                if link in link_visti:
+                    print("🛑 Trovata notizia già presente nel database. Mi fermo qui.")
+                    stop_scraping = True
+                    break
+                
+                link_visti.add(link)
+                titolo = a_tag.get_text(strip=True)
+                print(f"✨ Estrazione AI per: {titolo[:40]}...")
 
-        # Descrizione
-        desc_div = tag.find_next('div', class_=re.compile(r'text-gray-100'))
-        descrizione = desc_div.get_text(separator=' ', strip=True) if desc_div else "N/D"
+                img_url = "N/D"
+                tutti_link_uguali = soup.find_all('a', href=link)
+                for a_img in tutti_link_uguali:
+                    img_tag = a_img.find('img')
+                    if img_tag:
+                        img_url = img_tag.get('src') or img_tag.get('data-src') or "N/D"
+                        if img_url != "N/D": break
 
-        # Data
-        meta_p = tag.find_next('p', class_=re.compile(r'text-\[#A0A0A0\]'))
-        data = "N/D"
-        if meta_p and meta_p.find_previous(['h2', 'h3', 'h4']) == tag:
-            spans = meta_p.find_all('span')
-            if len(spans) >= 2: data = spans[1].get_text(strip=True)
-        if data == "N/D": data = get_date_from_article(session, link)
+                desc_div = tag.find_next('div', class_=re.compile(r'text-gray-100'))
+                descrizione = desc_div.get_text(separator=' ', strip=True) if desc_div and desc_div.find_previous(['h2', 'h3', 'h4']) == tag else "N/D"
 
-        # 🎯 CHIAMATA A GEMINI
-        ospiti_ai = estrai_ospiti_ai(titolo, descrizione)
+                meta_p = tag.find_next('p', class_=re.compile(r'text-\[#A0A0A0\]'))
+                data = "N/D"
+                if meta_p and meta_p.find_previous(['h2', 'h3', 'h4']) == tag:
+                    spans = meta_p.find_all('span')
+                    if len(spans) >= 2: data = spans[1].get_text(strip=True)
 
-        nuovi_dati.append({
-            "Data": data,
-            "Titolo": titolo,
-            "Ospiti": ospiti_ai, # Il nuovo campo AI
-            "Descrizione_Completa": descrizione,
-            "Immagine": img_url,
-            "Link": link
-        })
+                if data == "N/D":
+                    data = get_date_from_article(session, link)
+
+                # Chiamata a Gemini per gli ospiti
+                ospiti_ai = estrai_ospiti_ai(titolo, descrizione)
+
+                nuovi_dati.append({
+                    "Data": data,
+                    "Titolo": titolo,
+                    "Descrizione_Completa": descrizione,
+                    "Ospiti": ospiti_ai,
+                    "Immagine": img_url,
+                    "Link": link
+                })
+            
+            if stop_scraping: break
+            page += 1
+            if page > 10: break # Massimo 10 pagine per sicurezza
+            
+        except Exception as e:
+            print(f"❌ Errore: {e}")
+            break
 
     if nuovi_dati:
         df_new = pd.DataFrame(nuovi_dati)
         df_final = pd.concat([df_new, df_old], ignore_index=True).drop_duplicates(subset=['Link'])
         df_final.to_csv(CSV_FILENAME, index=False, encoding='utf-8')
-        print(f"✅ Aggiornato con successo ({len(nuovi_dati)} nuovi articoli).")
+        print(f"✅ Database aggiornato: +{len(df_new)} nuove notizie inserite.")
+    else:
+        print("☕ Nessuna nuova notizia da aggiungere. Il file CSV è già aggiornato.")
 
 if __name__ == "__main__":
     scrape_ospiti_tv()
