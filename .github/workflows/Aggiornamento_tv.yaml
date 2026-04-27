@@ -21,7 +21,11 @@ jobs:
       run: |
         git config --global user.email "action@github.com"
         git config --global user.name "GitHub Action"
+        # 1. Salva solo il nostro prezioso file CSV
         git add ospiti_tv.csv
         git commit -m "Update TV: $(date +'%Y-%m-%d %H:%M')" || echo "Nessun nuovo dato da salvare"
+        # 2. Spazza via QUALSIASI altra sporcizia o file temporaneo creato da Python
+        git stash --include-untracked
+        # 3. Ora la cartella è intonsa: aggiorniamo e spingiamo online!
         git pull origin main --rebase
         git push origin main
