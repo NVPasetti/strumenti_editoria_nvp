@@ -6,6 +6,10 @@ import pandas as pd
 from bs4 import BeautifulSoup
 from curl_cffi import requests
 import google.generativeai as genai
+import warnings
+
+# Ignoriamo il fastidioso FutureWarning di Google per tenere i log puliti
+warnings.filterwarnings("ignore", category=FutureWarning)
 
 # --- FIX ENCODING ---
 if sys.stdout.encoding != 'utf-8':
@@ -68,19 +72,25 @@ def scrape_ospiti_tv():
     print("📺 Avvio scraper incrementale DavideMaggio.it con AI...")
     session = get_stealth_session()
     
-    # --- FIX: GESTIONE FILE VUOTI (EmptyDataError) ---
     df_old = pd.DataFrame()
     link_visti = set()
     
-    if os.path.exists(CSV_FILENAME) and os.path.getsize(CSV_FILENAME) > 0:
+    # ==========================================
+    # GABBIA DI SICUREZZA CONTRO FILE CSV VUOTI O CORROTTI
+    # ==========================================
+    if os.path.exists(CSV_FILENAME):
         try:
-            df_old = pd.read_csv(CSV_FILENAME)
-            if 'Link' in df_old.columns:
-                link_visti = set(df_old['Link'].tolist())
-        except pd.errors.EmptyDataError:
-            print("⚠️ File CSV vuoto trovato, lo ricreo da zero.")
-            pass
-    # --------------------------------------------------
+            # Assicuriamoci che il file non sia a 0 byte
+            if os.path.getsize(CSV_FILENAME) > 0:
+                df_old = pd.read_csv(CSV_FILENAME)
+                if not df_old.empty and 'Link' in df_old.columns:
+                    link_visti = set(df_old['Link'].tolist())
+            else:
+                print("⚠️ Attenzione: Il file CSV esiste ma è a 0 byte. Lo ignoro e riparto da zero.")
+        except Exception as e:
+            print(f"⚠️ Impossibile leggere il file vecchio ({e}). Nessun problema, ripartiamo da zero.")
+            df_old = pd.DataFrame()
+    # ==========================================
 
     nuovi_dati = []
     stop_scraping = False
