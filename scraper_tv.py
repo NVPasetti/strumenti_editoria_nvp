@@ -8,8 +8,10 @@ from curl_cffi import requests
 import google.generativeai as genai
 import warnings
 
+# Ignoriamo il fastidioso FutureWarning di Google per tenere i log puliti
 warnings.filterwarnings("ignore", category=FutureWarning)
 
+# --- FIX ENCODING ---
 if sys.stdout.encoding != 'utf-8':
     try:
         sys.stdout.reconfigure(encoding='utf-8')
@@ -24,12 +26,14 @@ GEMINI_KEY = os.getenv("GEMINI_API_KEY")
 if GEMINI_KEY:
     print("✅ Chiave Gemini rilevata nel sistema!")
     genai.configure(api_key=GEMINI_KEY)
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    # CAMBIATO DA 'gemini-1.5-flash' A 'gemini-pro' (Modello universale e stabile)
+    model = genai.GenerativeModel('gemini-pro')
 else:
     print("❌ ATTENZIONE: Chiave Gemini (GEMINI_API_KEY) NON TROVATA!")
     model = None
 
 def estrai_ospiti_ai(titolo, descrizione):
+    """Chiede a Gemini di estrarre SOLO i nomi degli ospiti"""
     if not model:
         return "N/D"
     
@@ -40,14 +44,14 @@ def estrai_ospiti_ai(titolo, descrizione):
     Testo: {descrizione}"""
     
     try:
-        # PAUSA LUNGA: 4.5 secondi garantiscono di stare sotto le 15 richieste/minuto (limite gratuito Google)
-        time.sleep(4.5) 
+        time.sleep(4.5) # Pausa di sicurezza per il piano gratuito
         response = model.generate_content(prompt)
         res = response.text.strip()
+        # Pulizia per rimuovere frasi extra
         res = re.sub(r'^(?:sono|saranno|c\'è|ci sarà|ci sono|ospiti:)\s+', '', res, flags=re.IGNORECASE).strip()
         return res.capitalize() if res else "N/D"
     except Exception as e:
-        print(f"⚠️ Errore Gemini su '{titolo[:20]}': {e}") # Ora l'errore sarà visibile nei log!
+        print(f"⚠️ Errore Gemini su '{titolo[:20]}': {e}")
         return "N/D"
 
 def get_stealth_session():
@@ -56,6 +60,7 @@ def get_stealth_session():
     return session
 
 def get_date_from_article(session, url):
+    """Recupera la data mancante dall'interno dell'articolo"""
     try:
         time.sleep(0.5)
         res = session.get(url)
@@ -74,6 +79,7 @@ def scrape_ospiti_tv():
     df_old = pd.DataFrame()
     link_visti = set()
     
+    # GABBIA DI SICUREZZA CONTRO FILE CSV VUOTI O CORROTTI
     if os.path.exists(CSV_FILENAME):
         try:
             if os.path.getsize(CSV_FILENAME) > 0:
@@ -81,8 +87,9 @@ def scrape_ospiti_tv():
                 if not df_old.empty and 'Link' in df_old.columns:
                     link_visti = set(df_old['Link'].tolist())
             else:
-                print("⚠️ Attenzione: Il file CSV è a 0 byte. Riparto da zero.")
-        except Exception:
+                print("⚠️ Attenzione: Il file CSV esiste ma è a 0 byte. Lo ignoro e riparto da zero.")
+        except Exception as e:
+            print(f"⚠️ Impossibile leggere il file vecchio ({e}). Nessun problema, ripartiamo da zero.")
             df_old = pd.DataFrame()
 
     nuovi_dati = []
@@ -114,10 +121,11 @@ def scrape_ospiti_tv():
                 if not a_tag: continue
                 link = a_tag['href']
                 
-                if "/videogallery/" in link.lower() or link in link_visti:
-                    if link in link_visti:
-                        print("🛑 Trovata notizia già presente nel database. Mi fermo qui.")
-                        stop_scraping = True
+                if "/videogallery/" in link.lower(): continue
+                
+                if link in link_visti:
+                    print("🛑 Trovata notizia già presente nel database. Mi fermo qui.")
+                    stop_scraping = True
                     break
                 
                 link_visti.add(link)
@@ -157,7 +165,7 @@ def scrape_ospiti_tv():
             
             if stop_scraping: break
             page += 1
-            if page > 5: break # Ho abbassato il limite a 5 pagine per non tenere il server GitHub occupato troppo a lungo!
+            if page > 5: break
             
         except Exception as e:
             print(f"❌ Errore durante l'analisi: {e}")
