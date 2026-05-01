@@ -5,11 +5,7 @@ import os
 import pandas as pd
 from bs4 import BeautifulSoup
 from curl_cffi import requests
-import google.generativeai as genai
-import warnings
-
-# Ignoriamo il fastidioso FutureWarning di Google per tenere i log puliti
-warnings.filterwarnings("ignore", category=FutureWarning)
+from google import genai  # <-- LA NUOVA LIBRERIA UFFICIALE!
 
 # --- FIX ENCODING ---
 if sys.stdout.encoding != 'utf-8':
@@ -21,20 +17,18 @@ if sys.stdout.encoding != 'utf-8':
 BASE_URL = "https://www.davidemaggio.it/programmi-tv"
 CSV_FILENAME = "ospiti_tv.csv"
 
-# --- CONFIGURAZIONE GEMINI ---
+# --- CONFIGURAZIONE NUOVO GEMINI ---
 GEMINI_KEY = os.getenv("GEMINI_API_KEY") 
 if GEMINI_KEY:
     print("✅ Chiave Gemini rilevata nel sistema!")
-    genai.configure(api_key=GEMINI_KEY)
-    # CAMBIATO DA 'gemini-1.5-flash' A 'gemini-pro' (Modello universale e stabile)
-    model = genai.GenerativeModel('gemini-pro')
+    client = genai.Client(api_key=GEMINI_KEY)
 else:
     print("❌ ATTENZIONE: Chiave Gemini (GEMINI_API_KEY) NON TROVATA!")
-    model = None
+    client = None
 
 def estrai_ospiti_ai(titolo, descrizione):
     """Chiede a Gemini di estrarre SOLO i nomi degli ospiti"""
-    if not model:
+    if not client:
         return "N/D"
     
     prompt = f"""Analizza questo testo di un programma TV ed estrai SOLO i nomi propri delle persone (ospiti, conduttori o protagonisti).
@@ -45,7 +39,10 @@ def estrai_ospiti_ai(titolo, descrizione):
     
     try:
         time.sleep(4.5) # Pausa di sicurezza per il piano gratuito
-        response = model.generate_content(prompt)
+        response = client.models.generate_content(
+            model='gemini-2.0-flash', # <-- IL MODELLO PIU' NUOVO E STABILE
+            contents=prompt
+        )
         res = response.text.strip()
         # Pulizia per rimuovere frasi extra
         res = re.sub(r'^(?:sono|saranno|c\'è|ci sarà|ci sono|ospiti:)\s+', '', res, flags=re.IGNORECASE).strip()
