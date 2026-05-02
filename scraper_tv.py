@@ -5,7 +5,9 @@ import os
 import pandas as pd
 from bs4 import BeautifulSoup
 from curl_cffi import requests
-from google import genai  # <-- LA NUOVA LIBRERIA UFFICIALE!
+import json
+import urllib.request
+import urllib.error
 
 # --- FIX ENCODING ---
 if sys.stdout.encoding != 'utf-8':
@@ -17,18 +19,16 @@ if sys.stdout.encoding != 'utf-8':
 BASE_URL = "https://www.davidemaggio.it/programmi-tv"
 CSV_FILENAME = "ospiti_tv.csv"
 
-# --- CONFIGURAZIONE NUOVO GEMINI ---
+# --- CONFIGURAZIONE GEMINI TRAMITE API REST DIRETTA ---
 GEMINI_KEY = os.getenv("GEMINI_API_KEY") 
 if GEMINI_KEY:
     print("✅ Chiave Gemini rilevata nel sistema!")
-    client = genai.Client(api_key=GEMINI_KEY)
 else:
     print("❌ ATTENZIONE: Chiave Gemini (GEMINI_API_KEY) NON TROVATA!")
-    client = None
 
 def estrai_ospiti_ai(titolo, descrizione):
-    """Chiede a Gemini di estrarre SOLO i nomi degli ospiti"""
-    if not client:
+    """Chiede a Gemini di estrarre SOLO i nomi degli ospiti tramite chiamata API nativa (urllib)"""
+    if not GEMINI_KEY:
         return "N/D"
     
     prompt = f"""Analizza questo testo di un programma TV ed estrai SOLO i nomi propri delle persone (ospiti, conduttori o protagonisti).
@@ -37,18 +37,44 @@ def estrai_ospiti_ai(titolo, descrizione):
     Titolo: {titolo}
     Testo: {descrizione}"""
     
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_KEY}"
+    
+    # Payload con filtri di sicurezza disattivati per evitare falsi positivi su articoli di cronaca
+    data = {
+        "contents": [{
+            "parts": [{"text": prompt}]
+        }],
+        "safetySettings": [
+            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"}
+        ]
+    }
+    
+    payload = json.dumps(data).encode('utf-8')
+    req = urllib.request.Request(url, data=payload, headers={'Content-Type': 'application/json'})
+    
     try:
-        time.sleep(4.5) # Pausa di sicurezza per il piano gratuito
-        response = client.models.generate_content(
-            model='gemini-2.0-flash', # <-- IL MODELLO PIU' NUOVO E STABILE
-            contents=prompt
-        )
-        res = response.text.strip()
-        # Pulizia per rimuovere frasi extra
-        res = re.sub(r'^(?:sono|saranno|c\'è|ci sarà|ci sono|ospiti:)\s+', '', res, flags=re.IGNORECASE).strip()
-        return res.capitalize() if res else "N/D"
+        time.sleep(4.5) # Pausa di sicurezza per il piano gratuito (15 req/min)
+        with urllib.request.urlopen(req) as response:
+            result = json.loads(response.read().decode())
+            try:
+                res = result['candidates'][0]['content']['parts'][0]['text'].strip()
+                # Pulizia stringhe inutili
+                res = re.sub(r'^(?:sono|saranno|c\'è|ci sarà|ci sono|ospiti:)\s+', '', res, flags=re.IGNORECASE).strip()
+                res = res.strip("*-.\n\t ")
+                return res.capitalize() if res else "N/D"
+            except (KeyError, IndexError):
+                print(f"⚠️ Struttura risposta inattesa su '{titolo[:20]}': {result}")
+                return "N/D"
+                
+    except urllib.error.HTTPError as e:
+        error_info = e.read().decode()
+        print(f"❌ HTTP Error {e.code} su '{titolo[:20]}': {error_info}")
+        return "N/D"
     except Exception as e:
-        print(f"⚠️ Errore Gemini su '{titolo[:20]}': {e}")
+        print(f"❌ Errore critico connessione su '{titolo[:20]}': {e}")
         return "N/D"
 
 def get_stealth_session():
@@ -70,7 +96,7 @@ def get_date_from_article(session, url):
     return "N/D"
 
 def scrape_ospiti_tv():
-    print("📺 Avvio scraper incrementale DavideMaggio.it con AI...")
+    print("📺 Avvio scraper incrementale DavideMaggio.it con AI (Metodo API Nativo)...")
     session = get_stealth_session()
     
     df_old = pd.DataFrame()
@@ -86,7 +112,7 @@ def scrape_ospiti_tv():
             else:
                 print("⚠️ Attenzione: Il file CSV esiste ma è a 0 byte. Lo ignoro e riparto da zero.")
         except Exception as e:
-            print(f"⚠️ Impossibile leggere il file vecchio ({e}). Nessun problema, ripartiamo da zero.")
+            print(f"⚠️ Impossibile leggere il file vecchio ({e}). Riparto da zero.")
             df_old = pd.DataFrame()
 
     nuovi_dati = []
