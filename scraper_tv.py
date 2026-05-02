@@ -32,9 +32,10 @@ if GEMINI_KEY:
             models_data = json.loads(response.read().decode())
             available_models = [m['name'] for m in models_data.get('models', []) if 'generateContent' in m.get('supportedGenerationMethods', [])]
             
-            # ELIMINATO 2.5-flash (ha solo 20 richieste al giorno!)
-            # Priorità a modelli "da battaglia" che hanno 1.500 richieste al giorno
+            # --- LISTA DELLE PRIORITÀ AGGIORNATA ---
+            # Abbiamo messo gemini-3.1-flash-lite in cima assoluta come da tua richiesta
             preferiti = [
+                'models/gemini-3.1-flash-lite', 
                 'models/gemini-2.0-flash', 
                 'models/gemini-1.5-flash',
                 'models/gemini-1.5-flash-latest',
@@ -47,17 +48,22 @@ if GEMINI_KEY:
                     ACTIVE_MODEL = pref
                     break
             
-            if not ACTIVE_MODEL and available_models:
-                ACTIVE_MODEL = available_models[0]
+            # Se per qualche motivo l'API non lo elenca tra quelli standard, lo forziamo!
+            if not ACTIVE_MODEL:
+                if 'models/gemini-3.1-flash-lite' not in available_models:
+                    print("⚠️ Il modello 3.1 Flash Lite non è nella lista pubblica, ma provo a forzarlo...")
+                    ACTIVE_MODEL = 'models/gemini-3.1-flash-lite'
+                elif available_models:
+                    ACTIVE_MODEL = available_models[0]
                 
         if ACTIVE_MODEL:
-            print(f"✅ Modello selezionato automaticamente: {ACTIVE_MODEL}")
+            print(f"✅ Modello selezionato: {ACTIVE_MODEL}")
         else:
             print("❌ Nessun modello compatibile trovato per questa API key.")
             
     except Exception as e:
-        print(f"⚠️ Impossibile verificare i modelli dal server ({e}). Uso il fallback base.")
-        ACTIVE_MODEL = "models/gemini-2.0-flash"
+        print(f"⚠️ Impossibile verificare i modelli dal server ({e}). Forzo il 3.1 Flash Lite.")
+        ACTIVE_MODEL = "models/gemini-3.1-flash-lite"
 else:
     print("❌ ATTENZIONE: Chiave Gemini (GEMINI_API_KEY) NON TROVATA!")
 
@@ -95,7 +101,7 @@ def estrai_ospiti_ai(titolo, descrizione, is_retry=False):
     req = urllib.request.Request(url, data=payload, headers={'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0'})
     
     try:
-        # Pausa ottimizzata a 5 secondi (sicura per i modelli da 15 richieste al minuto)
+        # Pausa di 5 secondi: perfetta per un limite di 500 RPD
         time.sleep(5) 
         with urllib.request.urlopen(req) as response:
             result = json.loads(response.read().decode())
