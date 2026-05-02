@@ -3,6 +3,7 @@ import time
 import re
 import random
 import os
+import subprocess
 import pandas as pd
 from datetime import datetime
 from bs4 import BeautifulSoup
@@ -20,7 +21,7 @@ if sys.stdout.encoding != 'utf-8':
 
 CSV_FILENAME = "dati_internazionali.csv"
 
-# --- CONFIGURAZIONE DRIVER STEALTH ---
+# --- CONFIGURAZIONE DRIVER STEALTH (CON FIX VERSIONE DINAMICA) ---
 def get_driver():
     options = uc.ChromeOptions()
     options.add_argument('--headless=new') 
@@ -29,7 +30,18 @@ def get_driver():
     options.add_argument('--disable-gpu')
     options.add_argument('--window-size=1920,1080')
     
-    driver = uc.Chrome(options=options)
+    # Trova dinamicamente la versione di Chrome installata
+    versione_chrome = None
+    try:
+        processo = subprocess.run(['google-chrome', '--version'], capture_output=True, text=True)
+        versione_completa = processo.stdout.strip()
+        versione_chrome = int(versione_completa.split()[2].split('.')[0])
+        print(f"🔧 Versione Chrome rilevata sul sistema: {versione_chrome}")
+    except Exception as e:
+        print(f"⚠️ Impossibile determinare la versione di Chrome: {e}")
+        versione_chrome = 147 # Fallback
+        
+    driver = uc.Chrome(options=options, version_main=versione_chrome)
 
     stealth(driver,
         languages=["en-US", "en"],
@@ -354,7 +366,7 @@ def get_hachette_releases(driver):
 
 
 # ==========================================
-# 🚀 FUNZIONE MAIN Sincrona (Sovrascrittura)
+# 🚀 FUNZIONE MAIN (MODALITÀ PULITA E SOVRASCRITTURA)
 # ==========================================
 def main():
     print(f"🚀 Avvio Scraper Internazionale (Modalità Clean & Overwrite)...")
@@ -369,19 +381,21 @@ def main():
         tutti_i_dati.extend(get_macmillan_releases(driver))
         tutti_i_dati.extend(get_hachette_releases(driver))
         
-        # Sovrascrive il file CSV con i nuovi dati
         if tutti_i_dati:
             df = pd.DataFrame(tutti_i_dati)
             
-            # Aggiunge la data di estrazione come riferimento
             oggi_str = datetime.now().date().isoformat()
             df['Data_Aggiunta'] = oggi_str
             
-            # Riordina le colonne per maggiore leggibilità
             cols = ['Categoria', 'Data_Aggiunta', 'Editore', 'Copertina', 'Titolo', 'Autore', 'Descrizione', 'Link']
             esistenti = [c for c in cols if c in df.columns]
             df = df[esistenti]
             
+            # Eliminazione fisica prima della sovrascrittura
+            if os.path.exists(CSV_FILENAME):
+                os.remove(CSV_FILENAME)
+                print(f"🗑️ Vecchio file '{CSV_FILENAME}' cancellato dal disco.")
+                
             df.to_csv(CSV_FILENAME, index=False)
             print(f"✅ Scraping concluso! Trovati in totale {len(df)} libri. File sovrascritto: {CSV_FILENAME}")
         else:
