@@ -6,10 +6,10 @@ import os
 import pandas as pd
 from datetime import datetime
 from bs4 import BeautifulSoup
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
-from webdriver_manager.chrome import ChromeDriverManager
+
+# --- IMPORT ANTI-BOT ---
+import undetected_chromedriver as uc
+from selenium_stealth import stealth
 
 # --- FIX ENCODING ---
 if sys.stdout.encoding != 'utf-8':
@@ -22,24 +22,24 @@ CSV_FILENAME = "dati_internazionali.csv"
 
 # --- CONFIGURAZIONE DRIVER STEALTH ---
 def get_driver():
-    options = Options()
-    options.add_argument('--headless=new') # Nuova modalità invisibile anti-blocco
+    options = uc.ChromeOptions()
+    options.add_argument('--headless=new') 
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
     options.add_argument('--disable-gpu')
     options.add_argument('--window-size=1920,1080')
-    options.add_argument('--disable-blink-features=AutomationControlled')
-    options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
-    options.add_experimental_option("excludeSwitches", ["enable-automation"])
-    options.add_experimental_option('useAutomationExtension', False)
+    
+    driver = uc.Chrome(options=options)
 
-    service = Service(ChromeDriverManager().install())
-    driver = webdriver.Chrome(service=service, options=options)
-
-    # Rimuove il flag 'webdriver' per ingannare i bot
-    driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
-        'source': '''Object.defineProperty(navigator, 'webdriver', { get: () => undefined })'''
-    })
+    stealth(driver,
+        languages=["en-US", "en"],
+        vendor="Google Inc.",
+        platform="Win32",
+        webgl_vendor="Intel Inc.",
+        renderer="Intel Iris OpenGL Engine",
+        fix_hairline=True,
+    )
+    
     return driver
 
 # ==========================================
@@ -61,8 +61,9 @@ def get_nyt_bestsellers(driver):
         try:
             driver.get(url)
             time.sleep(4)
-            driver.execute_script("window.scrollTo(0, document.body.scrollHeight/2);")
-            time.sleep(1.5)
+            for i in range(1, 4):
+                driver.execute_script(f"window.scrollTo(0, {i * 400});")
+                time.sleep(0.5)
 
             html = driver.page_source
             soup = BeautifulSoup(html, 'html.parser')
@@ -91,7 +92,7 @@ def get_nyt_bestsellers(driver):
                     ed_tag = container.find(itemprop='publisher')
                     if ed_tag: editore = ed_tag.get_text(strip=True)
 
-                risultati.append({"Editore": editore, "Titolo": titolo, "Autore": autore, "Descrizione": descrizione, "Copertina": copertina, "Link": url})
+                risultati.append({"Editore": editore, "Titolo": titolo, "Autore": autore, "Descrizione": descrizione, "Copertina": copertina, "Link": url, "Categoria": "Bestseller"})
                 
         except Exception as e:
             print(f"⚠️ Errore su {nome_cat}: {e}")
@@ -111,8 +112,9 @@ def get_penguin_releases(driver):
         print(f"🔍 Scansione Vetrina Penguin Pagina {page}...")
         driver.get(url)
         time.sleep(4)
-        driver.execute_script("window.scrollTo(0, document.body.scrollHeight/2);")
-        time.sleep(1)
+        for i in range(1, 4):
+            driver.execute_script(f"window.scrollTo(0, {i * 400});")
+            time.sleep(0.5)
         
         html = driver.page_source
         soup = BeautifulSoup(html, 'html.parser')
@@ -130,7 +132,7 @@ def get_penguin_releases(driver):
             driver.get(link)
             time.sleep(random.uniform(2.0, 3.5))
             soup = BeautifulSoup(driver.page_source, 'html.parser')
-            dettagli = {"Editore": "Penguin Random House", "Titolo": "N/D", "Autore": "N/D", "Descrizione": "N/D", "Copertina": "N/D", "Link": link}
+            dettagli = {"Editore": "Penguin Random House", "Titolo": "N/D", "Autore": "N/D", "Descrizione": "N/D", "Copertina": "N/D", "Link": link, "Categoria": "Novità"}
             
             h1 = soup.find('h1')
             if h1: dettagli["Titolo"] = h1.get_text(strip=True)
@@ -180,7 +182,7 @@ def get_harper_releases(driver):
             driver.get(link)
             time.sleep(random.uniform(2.5, 4.0)) 
             soup = BeautifulSoup(driver.page_source, 'html.parser')
-            dettagli = {"Editore": "HarperCollins", "Titolo": "N/D", "Autore": "N/D", "Descrizione": "N/D", "Copertina": "N/D", "Link": link}
+            dettagli = {"Editore": "HarperCollins", "Titolo": "N/D", "Autore": "N/D", "Descrizione": "N/D", "Copertina": "N/D", "Link": link, "Categoria": "Novità"}
             
             titolo_principale = soup.find('h1', class_='product-title')
             sottotitolo = soup.find('h3')
@@ -233,7 +235,7 @@ def get_simon_releases(driver):
             driver.get(libro['Link'])
             time.sleep(random.uniform(2.5, 4.0))
             soup = BeautifulSoup(driver.page_source, 'html.parser')
-            dettagli = {"Editore": "Simon & Schuster", "Titolo": libro['Titolo'], "Autore": "N/D", "Descrizione": "N/D", "Copertina": libro['Copertina'], "Link": libro['Link']}
+            dettagli = {"Editore": "Simon & Schuster", "Titolo": libro['Titolo'], "Autore": "N/D", "Descrizione": "N/D", "Copertina": libro['Copertina'], "Link": libro['Link'], "Categoria": "Novità"}
             
             author_tag = soup.find(class_=re.compile(r'author|contributor', re.I))
             if author_tag: dettagli["Autore"] = re.sub(r'(?i)^by\s*', '', author_tag.get_text(strip=True))
@@ -280,7 +282,7 @@ def get_macmillan_releases(driver):
             driver.get(libro['Link'])
             time.sleep(random.uniform(2.5, 4.0))
             soup = BeautifulSoup(driver.page_source, 'html.parser')
-            dettagli = {"Editore": "Macmillan", "Titolo": "N/D", "Autore": "N/D", "Descrizione": "N/D", "Copertina": libro['Copertina'], "Link": libro['Link']}
+            dettagli = {"Editore": "Macmillan", "Titolo": "N/D", "Autore": "N/D", "Descrizione": "N/D", "Copertina": libro['Copertina'], "Link": libro['Link'], "Categoria": "Novità"}
             
             h1 = soup.find('h1', class_=re.compile(r'section-title__heading'))
             h2 = soup.find('h2', class_=re.compile(r'section-title__sub-title'))
@@ -328,7 +330,7 @@ def get_hachette_releases(driver):
             driver.get(link)
             time.sleep(random.uniform(2.5, 4.0))
             soup = BeautifulSoup(driver.page_source, 'html.parser')
-            dettagli = {"Editore": "Hachette", "Titolo": "N/D", "Autore": "N/D", "Descrizione": "N/D", "Copertina": "N/D", "Link": link}
+            dettagli = {"Editore": "Hachette", "Titolo": "N/D", "Autore": "N/D", "Descrizione": "N/D", "Copertina": "N/D", "Link": link, "Categoria": "Novità"}
             
             h1 = soup.find('h1')
             if h1: dettagli["Titolo"] = h1.get_text(strip=True)
@@ -350,70 +352,45 @@ def get_hachette_releases(driver):
         except: continue
     return risultati
 
-# ==========================================
-# 💾 SINCRONIZZATORE CSV 
-# ==========================================
-def sincronizza_csv_editore(nuovi_dati, nome_editore, categoria_default='Novità'):
-    if not nuovi_dati:
-        print(f"⚠️ Nessun dato corrente per {nome_editore}. Salto sincronizzazione.")
-        return
-
-    oggi_str = datetime.now().date().isoformat()
-    df_nuovi = pd.DataFrame(nuovi_dati)
-    df_nuovi['Categoria'] = categoria_default
-
-    if os.path.exists(CSV_FILENAME):
-        df_vecchio = pd.read_csv(CSV_FILENAME)
-        
-        if 'Editore' in df_vecchio.columns:
-            if nome_editore == "NYT":
-                df_altri = df_vecchio[df_vecchio['Editore'] != "New York Times Bestseller"]
-                df_vecchio_editore = df_vecchio[df_vecchio['Editore'] == "New York Times Bestseller"]
-            else:
-                df_altri = df_vecchio[df_vecchio['Editore'] != nome_editore]
-                df_vecchio_editore = df_vecchio[df_vecchio['Editore'] == nome_editore]
-        else:
-            df_altri = pd.DataFrame()
-            df_vecchio_editore = df_vecchio.copy()
-            
-        chiave_check = 'Titolo' if nome_editore == "NYT" else 'Link'
-        date_storiche = dict(zip(df_vecchio_editore[chiave_check], df_vecchio_editore['Data_Aggiunta']))
-        
-        df_nuovi['Data_Aggiunta'] = df_nuovi[chiave_check].apply(lambda x: date_storiche.get(x, oggi_str))
-        df_nuovi['Nuovo'] = df_nuovi[chiave_check].apply(lambda x: False if x in date_storiche else True)
-        
-        df_completo = pd.concat([df_altri, df_nuovi], ignore_index=True)
-    else:
-        df_nuovi['Data_Aggiunta'] = oggi_str
-        df_nuovi['Nuovo'] = True
-        df_completo = df_nuovi
-
-    cols = ['Nuovo', 'Categoria', 'Data_Aggiunta', 'Editore', 'Copertina', 'Titolo', 'Autore', 'Descrizione', 'Link']
-    esistenti = [c for c in cols if c in df_completo.columns]
-    df_completo = df_completo[esistenti]
-    df_completo.to_csv(CSV_FILENAME, index=False)
-    print(f"🔄 Database aggiornato per {nome_editore}.")
 
 # ==========================================
-# 🚀 FUNZIONE MAIN Sincrona (Selenium)
+# 🚀 FUNZIONE MAIN Sincrona (Sovrascrittura)
 # ==========================================
 def main():
-    print(f"🚀 Avvio Scraper Internazionale (Modalità Selenium Stealth)...")
+    print(f"🚀 Avvio Scraper Internazionale (Modalità Clean & Overwrite)...")
     driver = get_driver()
+    tutti_i_dati = []
     
     try:
-        sincronizza_csv_editore(get_nyt_bestsellers(driver), "NYT", categoria_default="Bestseller")
-        sincronizza_csv_editore(get_penguin_releases(driver), "Penguin Random House")
-        sincronizza_csv_editore(get_harper_releases(driver), "HarperCollins")
-        sincronizza_csv_editore(get_simon_releases(driver), "Simon & Schuster")
-        sincronizza_csv_editore(get_macmillan_releases(driver), "Macmillan")
-        sincronizza_csv_editore(get_hachette_releases(driver), "Hachette")
+        tutti_i_dati.extend(get_nyt_bestsellers(driver))
+        tutti_i_dati.extend(get_penguin_releases(driver))
+        tutti_i_dati.extend(get_harper_releases(driver))
+        tutti_i_dati.extend(get_simon_releases(driver))
+        tutti_i_dati.extend(get_macmillan_releases(driver))
+        tutti_i_dati.extend(get_hachette_releases(driver))
+        
+        # Sovrascrive il file CSV con i nuovi dati
+        if tutti_i_dati:
+            df = pd.DataFrame(tutti_i_dati)
+            
+            # Aggiunge la data di estrazione come riferimento
+            oggi_str = datetime.now().date().isoformat()
+            df['Data_Aggiunta'] = oggi_str
+            
+            # Riordina le colonne per maggiore leggibilità
+            cols = ['Categoria', 'Data_Aggiunta', 'Editore', 'Copertina', 'Titolo', 'Autore', 'Descrizione', 'Link']
+            esistenti = [c for c in cols if c in df.columns]
+            df = df[esistenti]
+            
+            df.to_csv(CSV_FILENAME, index=False)
+            print(f"✅ Scraping concluso! Trovati in totale {len(df)} libri. File sovrascritto: {CSV_FILENAME}")
+        else:
+            print("⚠️ Nessun dato estratto. Il file CSV non è stato creato/aggiornato.")
+            
     except Exception as e:
         print(f"⚠️ Errore critico globale: {e}")
     finally:
         driver.quit()
-        
-    print(f"\n✅ Sincronizzazione conclusa. File pronto: {CSV_FILENAME}")
 
 if __name__ == "__main__":
     main()
