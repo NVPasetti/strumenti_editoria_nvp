@@ -8,7 +8,6 @@ from datetime import datetime
 from bs4 import BeautifulSoup
 
 # --- IMPORT ANTI-BOT ---
-# curl_cffi simula il fingerprint TLS di Chrome
 from curl_cffi import requests
 
 # --- FIX ENCODING ---
@@ -23,18 +22,8 @@ URL_BESTSELLERS = "https://www.decitre.fr/livres/arts-societe-sciences-humaines/
 PAGINE_BESTSELLERS = 3
 CSV_FILENAME = "dati_decitre_scraper.csv"
 
-# ==========================================
-# 🛡️ CONFIGURAZIONE SESSIONE STEALTH
-# ==========================================
 def get_stealth_session():
-    """
-    Crea una sessione curl_cffi che emula perfettamente l'impronta TLS
-    di un browser Chrome recente, utile per bypassare DataDome/Cloudflare.
-    """
-    # impersonate="chrome120" (o versioni successive) è la magia di questa libreria
     session = requests.Session(impersonate="chrome120")
-    
-    # Aggiungiamo headers realistici
     session.headers.update({
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
         "Accept-Language": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7",
@@ -57,9 +46,6 @@ def controlla_blocco(html):
         return True
     return False
 
-# ==========================================
-# 📖 ESTRAZIONE VETRINA (TROVA I LINK)
-# ==========================================
 def parse_list_page(session, url):
     time.sleep(random.uniform(2.0, 4.0))
     try:
@@ -99,9 +85,6 @@ def parse_list_page(session, url):
         print(f"Errore caricamento lista: {e}")
         return []
 
-# ==========================================
-# 🔍 ESTRAZIONE DETTAGLI SINGOLO LIBRO
-# ==========================================
 def get_single_book_details(session, book_url):
     dettagli = {"Editore": "N/D", "Descrizione": "N/D", "Autore": "N/D"}
     if not book_url: return dettagli
@@ -115,7 +98,6 @@ def get_single_book_details(session, book_url):
             
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        # 1. ESTRAZIONE SINOSSI
         resume_title = soup.find(lambda tag: tag.name in ['h3', 'div'] and 'résumé' in tag.get_text(strip=True).lower())
         if resume_title:
             desc_content = resume_title.find_next_sibling('div')
@@ -124,7 +106,6 @@ def get_single_book_details(session, book_url):
             desc_div = soup.find('div', id='description') or soup.find(class_=re.compile(r'description'))
             if desc_div: dettagli["Descrizione"] = desc_div.get_text(separator=' ', strip=True)
 
-        # 2. ESTRAZIONE EDITORE 
         for tag in soup.find_all(['li', 'div', 'tr']):
             testo = tag.get_text(strip=True).lower()
             if "éditeur" in testo or "editeur" in testo:
@@ -132,7 +113,6 @@ def get_single_book_details(session, book_url):
                 dettagli["Editore"] = re.sub(r'(?i)éditeurs?|editeurs?|\:', '', valore).strip()
                 break
 
-        # 3. ESTRAZIONE AUTORE
         for tag in soup.find_all(class_=re.compile(r'author', re.I)):
             autore_testo = tag.get_text(strip=True)
             if 2 < len(autore_testo) < 100 and "centre de" not in autore_testo.lower() and "cookies" not in autore_testo.lower():
@@ -144,9 +124,6 @@ def get_single_book_details(session, book_url):
         print(f"  [Errore estrazione dettagli: {e}]")
         return dettagli
 
-# ==========================================
-# 🚀 MAIN (MODALITÀ PULITA)
-# ==========================================
 def main():
     print("=== START DECITRE SCRAPER (CURL_CFFI STEALTH MODE) ===")
     
@@ -189,7 +166,6 @@ def main():
     except Exception as e:
         print(f"\n⚠️ Errore inaspettato globale: {e}")
         
-    # --- SALVATAGGIO STATELESS (SOVRASCRITTURA) ---
     if tutti_i_dati:
         df = pd.DataFrame(tutti_i_dati)
         
@@ -197,6 +173,10 @@ def main():
         esistenti = [c for c in cols if c in df.columns]
         df = df[esistenti]
         
+        if os.path.exists(CSV_FILENAME):
+            os.remove(CSV_FILENAME)
+            print(f"🗑️ Vecchio file '{CSV_FILENAME}' cancellato dal disco.")
+            
         df.to_csv(CSV_FILENAME, index=False)
         print(f"\n🎉 OPERAZIONE CONCLUSA. {len(df)} libri elaborati! File '{CSV_FILENAME}' sovrascritto.")
     else:
