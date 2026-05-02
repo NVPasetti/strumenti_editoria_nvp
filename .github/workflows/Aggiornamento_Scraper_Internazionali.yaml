@@ -1,0 +1,60 @@
+name: Aggiornamento Bi-Settimanale Scraper Editoria
+
+on:
+  schedule:
+    # Esegue alle 21:00 UTC (che corrispondono alle 23:00 in Italia - ora legale CEST)
+    # 0 = Domenica, 3 = Mercoledì
+    - cron: '0 21 * * 0,3'
+  workflow_dispatch: # Mantiene il pulsante per l'avvio manuale dal pannello GitHub
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: write
+      
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+    - name: Checkout del codice
+      uses: actions/checkout@v4
+
+    - name: Configurazione Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Installazione librerie di sistema (Display Virtuale)
+      # undetected-chromedriver su server Linux headless necessita spesso di un display virtuale per non crashare
+      run: sudo apt-get update && sudo apt-get install -y xvfb
+
+    - name: Installazione dipendenze Python
+      run: |
+        python -m pip install --upgrade pip
+        # Pacchetti aggiornati per le nuove versioni degli scraper
+        pip install pandas beautifulsoup4 selenium undetected-chromedriver selenium-stealth curl_cffi
+
+    - name: Esecuzione Scraper Internazionali (Big 5 + NYT)
+      # Usiamo xvfb-run per simulare uno schermo fisico ed evitare il blocco del driver
+      run: xvfb-run python scraper_internazionali.py
+
+    - name: Esecuzione Scraper Decitre (Francia)
+      # Il francese usa richieste stealth superveloci via curl_cffi (non serve il display virtuale qui)
+      run: python scraper_decitre.py
+
+    - name: Commit e Push dei risultati
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        
+        # Aggiunge i due file (che adesso vengono interamente sovrascritti dai nuovi script)
+        git add dati_internazionali.csv dati_decitre_scraper.csv
+        git commit -m "Aggiornamento automatico dati: $(date +'%Y-%m-%d')" || true
+        
+        # RISOLUZIONE CONFLITTI: Disattiva il rebase e fa vincere il file appena creato dal bot (-X ours)
+        git config pull.rebase false
+        git pull origin main -X ours
+        
+        git push
