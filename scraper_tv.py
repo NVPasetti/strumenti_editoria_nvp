@@ -30,16 +30,13 @@ if GEMINI_KEY:
         req = urllib.request.Request(url_models, headers={'User-Agent': 'Mozilla/5.0'})
         with urllib.request.urlopen(req) as response:
             models_data = json.loads(response.read().decode())
-            # Filtriamo solo i modelli in grado di generare testo
             available_models = [m['name'] for m in models_data.get('models', []) if 'generateContent' in m.get('supportedGenerationMethods', [])]
             
-            # Ordine di preferenza: dal più nuovo al più vecchio
-            for pref in ['models/gemini-2.5-flash', 'models/gemini-2.0-flash', 'models/gemini-1.5-flash', 'models/gemini-1.5-pro', 'models/gemini-pro', 'models/gemini-1.0-pro']:
+            for pref in ['models/gemini-2.5-flash', 'models/gemini-2.0-flash', 'models/gemini-1.5-flash', 'models/gemini-1.5-pro', 'models/gemini-pro']:
                 if pref in available_models:
                     ACTIVE_MODEL = pref
                     break
             
-            # Se non c'è nessuno dei preferiti, prendiamo il primo disponibile!
             if not ACTIVE_MODEL and available_models:
                 ACTIVE_MODEL = available_models[0]
                 
@@ -54,21 +51,25 @@ if GEMINI_KEY:
 else:
     print("❌ ATTENZIONE: Chiave Gemini (GEMINI_API_KEY) NON TROVATA!")
 
-def estrai_ospiti_ai(titolo, descrizione):
-    """Chiede a Gemini di estrarre SOLO i nomi degli ospiti tramite chiamata API nativa (urllib)"""
+def estrai_ospiti_ai(titolo, descrizione, is_retry=False):
+    """Chiede a Gemini di estrarre ESCLUSIVAMENTE gli ospiti invitati."""
     if not GEMINI_KEY or not ACTIVE_MODEL:
         return "N/D"
     
-    prompt = f"""Analizza questo testo di un programma TV ed estrai SOLO i nomi propri delle persone (ospiti, conduttori o protagonisti).
-    Restituisci solo l'elenco dei nomi separati da virgola. Non scrivere frasi intere.
-    Se non trovi nomi di persone, scrivi esattamente 'N/D'.
+    # PROMPT AGGIORNATO E CHIRURGICO
+    prompt = f"""Leggi questo articolo su un programma TV. Il tuo unico compito è estrarre ESCLUSIVAMENTE i nomi degli OSPITI INVITATI in studio o in collegamento.
+    REGOLE RIGIDE:
+    1. NON includere i conduttori fissi del programma.
+    2. NON includere persone di cui si parlerà nella puntata ma che non saranno fisicamente presenti.
+    3. NON includere registi, autori o personaggi secondari non invitati come ospiti.
+    4. Restituisci SOLO l'elenco dei nomi e cognomi degli ospiti separati da virgola. Non aggiungere frasi.
+    5. Se nell'articolo non c'è nessun ospite annunciato secondo queste regole, scrivi esattamente 'N/D'.
+    
     Titolo: {titolo}
     Testo: {descrizione}"""
     
-    # Inseriamo il modello trovato dinamicamente nella chiamata
     url = f"https://generativelanguage.googleapis.com/v1beta/{ACTIVE_MODEL}:generateContent?key={GEMINI_KEY}"
     
-    # Payload con filtri di sicurezza disattivati
     data = {
         "contents": [{
             "parts": [{"text": prompt}]
@@ -85,7 +86,8 @@ def estrai_ospiti_ai(titolo, descrizione):
     req = urllib.request.Request(url, data=payload, headers={'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0'})
     
     try:
-        time.sleep(4.5) # Pausa di sicurezza per il piano gratuito (15 req/min)
+        # PAUSA ALZATA A 13 SECONDI per rispettare il limite rigoroso di 5 richieste/minuto dei nuovi modelli gratuiti
+        time.sleep(13) 
         with urllib.request.urlopen(req) as response:
             result = json.loads(response.read().decode())
             try:
@@ -94,10 +96,16 @@ def estrai_ospiti_ai(titolo, descrizione):
                 res = res.strip("*-.\n\t ")
                 return res.capitalize() if res else "N/D"
             except (KeyError, IndexError):
-                print(f"⚠️ Struttura risposta inattesa su '{titolo[:20]}': {result}")
+                print(f"⚠️ Struttura risposta inattesa su '{titolo[:20]}'")
                 return "N/D"
                 
     except urllib.error.HTTPError as e:
+        # SISTEMA ANTI-BLOCCO AUTOMATICO
+        if e.code == 429 and not is_retry:
+            print(f"⏳ Limite di velocità raggiunto (429) su '{titolo[:20]}'. Aspetto 30 secondi e riprovo...")
+            time.sleep(30)
+            return estrai_ospiti_ai(titolo, descrizione, is_retry=True)
+            
         error_info = e.read().decode()
         print(f"❌ HTTP Error {e.code} su '{titolo[:20]}': {error_info}")
         return "N/D"
@@ -111,7 +119,6 @@ def get_stealth_session():
     return session
 
 def get_date_from_article(session, url):
-    """Recupera la data mancante dall'interno dell'articolo"""
     try:
         time.sleep(0.5)
         res = session.get(url)
@@ -130,7 +137,6 @@ def scrape_ospiti_tv():
     df_old = pd.DataFrame()
     link_visti = set()
     
-    # GABBIA DI SICUREZZA CONTRO FILE CSV VUOTI O CORROTTI
     if os.path.exists(CSV_FILENAME):
         try:
             if os.path.getsize(CSV_FILENAME) > 0:
