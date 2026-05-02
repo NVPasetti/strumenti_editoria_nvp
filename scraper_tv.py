@@ -19,16 +19,44 @@ if sys.stdout.encoding != 'utf-8':
 BASE_URL = "https://www.davidemaggio.it/programmi-tv"
 CSV_FILENAME = "ospiti_tv.csv"
 
-# --- CONFIGURAZIONE GEMINI TRAMITE API REST DIRETTA ---
+# --- CONFIGURAZIONE DINAMICA GEMINI ---
 GEMINI_KEY = os.getenv("GEMINI_API_KEY") 
+ACTIVE_MODEL = None
+
 if GEMINI_KEY:
-    print("✅ Chiave Gemini rilevata nel sistema!")
+    print("✅ Chiave Gemini rilevata! Interrogo il server per trovare i modelli disponibili...")
+    try:
+        url_models = f"https://generativelanguage.googleapis.com/v1beta/models?key={GEMINI_KEY}"
+        req = urllib.request.Request(url_models, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req) as response:
+            models_data = json.loads(response.read().decode())
+            # Filtriamo solo i modelli in grado di generare testo
+            available_models = [m['name'] for m in models_data.get('models', []) if 'generateContent' in m.get('supportedGenerationMethods', [])]
+            
+            # Ordine di preferenza: dal più nuovo al più vecchio
+            for pref in ['models/gemini-2.5-flash', 'models/gemini-2.0-flash', 'models/gemini-1.5-flash', 'models/gemini-1.5-pro', 'models/gemini-pro', 'models/gemini-1.0-pro']:
+                if pref in available_models:
+                    ACTIVE_MODEL = pref
+                    break
+            
+            # Se non c'è nessuno dei preferiti, prendiamo il primo disponibile!
+            if not ACTIVE_MODEL and available_models:
+                ACTIVE_MODEL = available_models[0]
+                
+        if ACTIVE_MODEL:
+            print(f"✅ Modello selezionato automaticamente: {ACTIVE_MODEL}")
+        else:
+            print("❌ Nessun modello compatibile trovato per questa API key.")
+            
+    except Exception as e:
+        print(f"⚠️ Impossibile verificare i modelli dal server ({e}). Uso il fallback base.")
+        ACTIVE_MODEL = "models/gemini-1.5-flash"
 else:
     print("❌ ATTENZIONE: Chiave Gemini (GEMINI_API_KEY) NON TROVATA!")
 
 def estrai_ospiti_ai(titolo, descrizione):
     """Chiede a Gemini di estrarre SOLO i nomi degli ospiti tramite chiamata API nativa (urllib)"""
-    if not GEMINI_KEY:
+    if not GEMINI_KEY or not ACTIVE_MODEL:
         return "N/D"
     
     prompt = f"""Analizza questo testo di un programma TV ed estrai SOLO i nomi propri delle persone (ospiti, conduttori o protagonisti).
@@ -37,9 +65,10 @@ def estrai_ospiti_ai(titolo, descrizione):
     Titolo: {titolo}
     Testo: {descrizione}"""
     
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_KEY}"
+    # Inseriamo il modello trovato dinamicamente nella chiamata
+    url = f"https://generativelanguage.googleapis.com/v1beta/{ACTIVE_MODEL}:generateContent?key={GEMINI_KEY}"
     
-    # Payload con filtri di sicurezza disattivati per evitare falsi positivi su articoli di cronaca
+    # Payload con filtri di sicurezza disattivati
     data = {
         "contents": [{
             "parts": [{"text": prompt}]
@@ -53,7 +82,7 @@ def estrai_ospiti_ai(titolo, descrizione):
     }
     
     payload = json.dumps(data).encode('utf-8')
-    req = urllib.request.Request(url, data=payload, headers={'Content-Type': 'application/json'})
+    req = urllib.request.Request(url, data=payload, headers={'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0'})
     
     try:
         time.sleep(4.5) # Pausa di sicurezza per il piano gratuito (15 req/min)
@@ -61,7 +90,6 @@ def estrai_ospiti_ai(titolo, descrizione):
             result = json.loads(response.read().decode())
             try:
                 res = result['candidates'][0]['content']['parts'][0]['text'].strip()
-                # Pulizia stringhe inutili
                 res = re.sub(r'^(?:sono|saranno|c\'è|ci sarà|ci sono|ospiti:)\s+', '', res, flags=re.IGNORECASE).strip()
                 res = res.strip("*-.\n\t ")
                 return res.capitalize() if res else "N/D"
