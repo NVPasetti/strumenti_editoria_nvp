@@ -32,7 +32,17 @@ if GEMINI_KEY:
             models_data = json.loads(response.read().decode())
             available_models = [m['name'] for m in models_data.get('models', []) if 'generateContent' in m.get('supportedGenerationMethods', [])]
             
-            for pref in ['models/gemini-2.5-flash', 'models/gemini-2.0-flash', 'models/gemini-1.5-flash', 'models/gemini-1.5-pro', 'models/gemini-pro']:
+            # ELIMINATO 2.5-flash (ha solo 20 richieste al giorno!)
+            # Priorità a modelli "da battaglia" che hanno 1.500 richieste al giorno
+            preferiti = [
+                'models/gemini-2.0-flash', 
+                'models/gemini-1.5-flash',
+                'models/gemini-1.5-flash-latest',
+                'models/gemini-1.5-flash-8b',
+                'models/gemini-pro'
+            ]
+            
+            for pref in preferiti:
                 if pref in available_models:
                     ACTIVE_MODEL = pref
                     break
@@ -47,7 +57,7 @@ if GEMINI_KEY:
             
     except Exception as e:
         print(f"⚠️ Impossibile verificare i modelli dal server ({e}). Uso il fallback base.")
-        ACTIVE_MODEL = "models/gemini-1.5-flash"
+        ACTIVE_MODEL = "models/gemini-2.0-flash"
 else:
     print("❌ ATTENZIONE: Chiave Gemini (GEMINI_API_KEY) NON TROVATA!")
 
@@ -56,13 +66,12 @@ def estrai_ospiti_ai(titolo, descrizione, is_retry=False):
     if not GEMINI_KEY or not ACTIVE_MODEL:
         return "N/D"
     
-    # PROMPT AGGIORNATO E CHIRURGICO
     prompt = f"""Leggi questo articolo su un programma TV. Il tuo unico compito è estrarre ESCLUSIVAMENTE i nomi degli OSPITI INVITATI in studio o in collegamento.
     REGOLE RIGIDE:
     1. NON includere i conduttori fissi del programma.
-    2. NON includere persone di cui si parlerà nella puntata ma che non saranno fisicamente presenti.
+    2. NON includere persone di cui si parlerà nella puntata ma che non saranno fisicamente presenti come ospiti.
     3. NON includere registi, autori o personaggi secondari non invitati come ospiti.
-    4. Restituisci SOLO l'elenco dei nomi e cognomi degli ospiti separati da virgola. Non aggiungere frasi.
+    4. Restituisci SOLO l'elenco dei nomi e cognomi degli ospiti separati da virgola. Non aggiungere altre parole.
     5. Se nell'articolo non c'è nessun ospite annunciato secondo queste regole, scrivi esattamente 'N/D'.
     
     Titolo: {titolo}
@@ -86,8 +95,8 @@ def estrai_ospiti_ai(titolo, descrizione, is_retry=False):
     req = urllib.request.Request(url, data=payload, headers={'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0'})
     
     try:
-        # PAUSA ALZATA A 13 SECONDI per rispettare il limite rigoroso di 5 richieste/minuto dei nuovi modelli gratuiti
-        time.sleep(13) 
+        # Pausa ottimizzata a 5 secondi (sicura per i modelli da 15 richieste al minuto)
+        time.sleep(5) 
         with urllib.request.urlopen(req) as response:
             result = json.loads(response.read().decode())
             try:
@@ -100,7 +109,6 @@ def estrai_ospiti_ai(titolo, descrizione, is_retry=False):
                 return "N/D"
                 
     except urllib.error.HTTPError as e:
-        # SISTEMA ANTI-BLOCCO AUTOMATICO
         if e.code == 429 and not is_retry:
             print(f"⏳ Limite di velocità raggiunto (429) su '{titolo[:20]}'. Aspetto 30 secondi e riprovo...")
             time.sleep(30)
