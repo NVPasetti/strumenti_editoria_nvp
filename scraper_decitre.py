@@ -23,18 +23,18 @@ PAGINE_BESTSELLERS = 3
 CSV_FILENAME = "dati_decitre_scraper.csv"
 
 def get_stealth_session():
-    session = requests.Session(impersonate="chrome120")
+    # Passiamo a un'impersonificazione Safari aggiornata (spesso bypassa meglio i filtri su IP datacenter)
+    session = requests.Session(impersonate="safari17_0")
+    
     session.headers.update({
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7",
         "Referer": "https://www.google.fr/",
-        "Sec-Ch-Ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
-        "Sec-Ch-Ua-Mobile": "?0",
-        "Sec-Ch-Ua-Platform": '"Windows"',
+        # Headers tipici di Safari
         "Sec-Fetch-Dest": "document",
         "Sec-Fetch-Mode": "navigate",
         "Sec-Fetch-Site": "cross-site",
-        "Sec-Fetch-User": "?1",
+        "Connection": "keep-alive",
         "Upgrade-Insecure-Requests": "1"
     })
     return session
