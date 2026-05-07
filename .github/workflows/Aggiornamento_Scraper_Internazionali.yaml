@@ -49,11 +49,13 @@ jobs:
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
         
-        # Aggiunge i due file (che adesso vengono interamente sovrascritti dai nuovi script)
-        git add dati_internazionali.csv dati_decitre_scraper.csv
+        # Controlla se i file esistono prima di aggiungerli (evita il crash exit code 128)
+        if [ -f dati_internazionali.csv ]; then git add dati_internazionali.csv; fi
+        if [ -f dati_decitre_scraper.csv ]; then git add dati_decitre_scraper.csv; fi
+        
         git commit -m "Aggiornamento automatico dati: $(date +'%Y-%m-%d')" || true
         
-        # RISOLUZIONE CONFLITTI: Disattiva il rebase e fa vincere il file appena creato dal bot (-X ours)
+        # RISOLUZIONE CONFLITTI
         git config pull.rebase false
         git pull origin main -X ours
         
