@@ -4,7 +4,6 @@ import os
 import datetime
 import re
 from supabase import create_client, Client
-import google.generativeai as genai
 
 # --- CONFIGURAZIONE PAGINA ---
 st.set_page_config(page_title="Strumenti Editoriali", layout="wide", page_icon="📚")
@@ -21,13 +20,6 @@ try:
 except Exception as e:
     st.error(f"Errore di connessione a Supabase: {e}")
     supabase = None
-
-# --- INIZIALIZZAZIONE GEMINI ---
-try:
-    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-    model_gemini = genai.GenerativeModel('gemini-1.5-flash')
-except Exception:
-    model_gemini = None
 
 # --- FUNZIONI DATABASE AMAZON (WISHLIST) ---
 def carica_preferiti_db():
@@ -257,7 +249,7 @@ def mostra_griglia_libri(df_da_mostrare, limite_key, tab_id):
                 st.rerun()
 
 # ==========================================
-# SIDEBAR: NAVIGAZIONE PRINCIPALE E ASSISTENTE
+# SIDEBAR: NAVIGAZIONE PRINCIPALE
 # ==========================================
 st.sidebar.header("Strumenti")
 piattaforma = st.sidebar.radio("Scegli servizio:", [
@@ -266,38 +258,6 @@ piattaforma = st.sidebar.radio("Scegli servizio:", [
     "🌍 Mercato Internazionale",
     "📺 Palinsesto Programmi TV"
 ])
-st.sidebar.markdown("---")
-
-# --- ASSISTENTE GEMINI ---
-st.sidebar.header("✨ Assistente Gemini")
-if 'messaggi_gemini' not in st.session_state:
-    st.session_state.messaggi_gemini = []
-
-with st.sidebar.expander("💬 Fai una domanda", expanded=False):
-    if model_gemini:
-        for msg in st.session_state.messaggi_gemini:
-            with st.chat_message(msg["role"]):
-                st.markdown(msg["content"])
-        
-        prompt = st.chat_input("Chiedimi un riassunto, un post social...")
-        
-        if prompt:
-            st.session_state.messaggi_gemini.append({"role": "user", "content": prompt})
-            with st.chat_message("user"):
-                st.markdown(prompt)
-                
-            with st.chat_message("assistant"):
-                with st.spinner("Sto pensando..."):
-                    try:
-                        risposta = model_gemini.generate_content(prompt)
-                        testo_risposta = risposta.text
-                        st.markdown(testo_risposta)
-                        st.session_state.messaggi_gemini.append({"role": "assistant", "content": testo_risposta})
-                    except Exception as e:
-                        st.error(f"Errore di Gemini: {e}")
-    else:
-        st.caption("Configura la chiave GEMINI_API_KEY nei secrets per usare l'assistente.")
-
 st.sidebar.markdown("---")
 
 # ==========================================
