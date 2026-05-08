@@ -26,6 +26,18 @@ def get_stealth_session():
     # Passiamo a un'impersonificazione Safari aggiornata (spesso bypassa meglio i filtri su IP datacenter)
     session = requests.Session(impersonate="safari17_0")
     
+    # LETTURA DEL PROXY DALLE VARIABILI D'AMBIENTE (Webshare)
+    proxy_url = os.environ.get("WEBSHARE_PROXY")
+    
+    if proxy_url:
+        print("🌐 Proxy Webshare rilevato: connessione in corso...")
+        session.proxies = {
+            "http": proxy_url,
+            "https": proxy_url
+        }
+    else:
+        print("🌐 Nessun proxy configurato: uso la connessione diretta.")
+
     session.headers.update({
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7",
@@ -86,7 +98,8 @@ def parse_list_page(session, url):
         return []
 
 def get_single_book_details(session, book_url):
-    dettagli = {"Editore": "N/D", "Descrizione": "N/D", "Autore": "N/D"}
+    # 1. Aggiunto "Copertina" nel dizionario di base
+    dettagli = {"Editore": "N/D", "Descrizione": "N/D", "Autore": "N/D", "Copertina": ""}
     if not book_url: return dettagli
     
     try:
@@ -98,11 +111,19 @@ def get_single_book_details(session, book_url):
             
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        resume_title = soup.find(lambda tag: tag.name in ['h3', 'div'] and 'résumé' in tag.get_text(strip=True).lower())
-        if resume_title:
-            desc_content = resume_title.find_next_sibling('div')
-            if desc_content: dettagli["Descrizione"] = desc_content.get_text(separator=' ', strip=True)
+        # 🖼️ 2. NUOVA ESTRAZIONE COPERTINA (Migliorata con la tua classe "image")
+        img_tag = soup.find('img', class_='image')
+        if img_tag and img_tag.get('src'):
+            src = img_tag.get('src')
+            dettagli["Copertina"] = src if src.startswith('http') else "https:" + src
+            
+        # 📝 3. NUOVA ESTRAZIONE SINOSSI PULITA (Target mirato sul div 'real-text')
+        real_text_div = soup.find('div', class_='real-text')
+        if real_text_div:
+            # Prende il testo senza "Voir plus" e formatta gli spazi
+            dettagli["Descrizione"] = real_text_div.get_text(separator=' ', strip=True)
         else:
+            # Fallback di sicurezza
             desc_div = soup.find('div', id='description') or soup.find(class_=re.compile(r'description'))
             if desc_div: dettagli["Descrizione"] = desc_div.get_text(separator=' ', strip=True)
 
@@ -158,6 +179,11 @@ def main():
                 book['Autore'] = dettagli['Autore']
                 book['Editore'] = dettagli['Editore']
                 book['Descrizione'] = dettagli['Descrizione']
+                
+                # 4. SOVRASCRIVE LA COPERTINA se la pagina singola ne ha trovata una ad alta definizione
+                if dettagli.get('Copertina'):
+                    book['Copertina'] = dettagli['Copertina']
+                    
                 book['Categoria'] = "Novità" if "Novità" in pagina_target['nome'] else "Bestseller"
                 book['Data_Aggiunta'] = oggi_str
                 
