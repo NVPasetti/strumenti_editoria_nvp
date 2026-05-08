@@ -86,7 +86,10 @@ def parse_list_page(session, url):
                 img_tag = parent_card.find('img')
                 if img_tag:
                     img_url = img_tag.get('src') or img_tag.get('data-src') or ""
-                    if img_url and img_url.startswith('//'): img_url = "https:" + img_url
+                    if img_url:
+                        if img_url.startswith('//'): img_url = "https:" + img_url
+                        # MAGIA REGEX: Trova qualsiasi dimensione (es. "-70x95") e la forza a "-475x500"
+                        img_url = re.sub(r'-\d+x\d+', '-475x500', img_url)
                         
             books.append({'Copertina': img_url, 'Titolo': title, 'Link': href})
             visti_href.add(href)
@@ -109,10 +112,12 @@ def get_single_book_details(session, book_url):
             
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        # 🖼️ 1. ESTRAZIONE COPERTINA (Prende esattamente l'URL da 475x500px senza romperlo)
+        # 🖼️ 1. ESTRAZIONE COPERTINA (Forzatura ad alta risoluzione)
         img_tag = soup.find('img', class_='image')
         if img_tag and img_tag.get('src'):
             src = img_tag.get('src')
+            # Sostituisce qualsiasi dimensione presente nell'URL del singolo libro con -475x500
+            src = re.sub(r'-\d+x\d+', '-475x500', src)
             dettagli["Copertina"] = src if src.startswith('http') else "https:" + src
             
         # 📝 2. ESTRAZIONE SINOSSI PULITA
