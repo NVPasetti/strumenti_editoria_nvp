@@ -27,38 +27,39 @@ def carica_preferiti_db():
         try:
             risposta = supabase.table("wishlist").select("asin, nota").execute()
             return {r["asin"]: (r.get("nota") or "") for r in risposta.data}
-        except Exception:
-            try:
-                risposta = supabase.table("wishlist").select("asin").execute()
-                return {r["asin"]: "" for r in risposta.data}
-            except Exception:
-                return {}
+        except Exception as e:
+            st.error(f"🛑 Errore DB (Caricamento Wishlist): {e}")
+            return {}
     return {}
 
 def salva_preferito_db(item_id):
     if supabase:
         try:
             supabase.table("wishlist").insert({"asin": item_id, "nota": ""}).execute()
-        except Exception: pass
+        except Exception as e: 
+            st.error(f"🛑 Errore DB (Salvataggio Wishlist): {e}")
 
 def aggiorna_nota_db(item_id, nota_testo):
     if supabase:
         try:
             supabase.table("wishlist").update({"nota": nota_testo}).eq("asin", item_id).execute()
-        except Exception: pass
+        except Exception as e: 
+            st.error(f"🛑 Errore DB (Aggiornamento Nota): {e}")
 
 def rimuovi_preferito_db(item_id):
     if supabase:
         try:
             supabase.table("wishlist").delete().eq("asin", item_id).execute()
-        except Exception: pass
+        except Exception as e: 
+            st.error(f"🛑 Errore DB (Rimozione Wishlist): {e}")
 
 def svuota_salvati_db():
     st.session_state.libri_salvati.clear()
     if supabase:
         try:
             supabase.table("wishlist").delete().neq("asin", "dummy_value").execute()
-        except Exception: pass
+        except Exception as e: 
+            st.error(f"🛑 Errore DB (Svuota Wishlist): {e}")
 
 # --- FUNZIONI DATABASE IBS (REMINDERS) ---
 def carica_reminders_db():
@@ -74,7 +75,9 @@ def carica_reminders_db():
                     "data_scadenza": r["data_scadenza"]
                 }
             return reminders_dict
-        except Exception: return {}
+        except Exception as e: 
+            st.error(f"🛑 Errore DB (Caricamento Reminders): {e}")
+            return {}
     return {}
 
 def aggiungi_reminder_db(id_link, titolo, autore, data_scadenza):
@@ -83,34 +86,40 @@ def aggiungi_reminder_db(id_link, titolo, autore, data_scadenza):
             supabase.table("reminders").insert({
                 "id": id_link, "titolo": titolo, "autore": autore, "data_scadenza": data_scadenza
             }).execute()
-        except Exception: pass
+        except Exception as e: 
+            st.error(f"🛑 Errore DB (Aggiunta Reminder): {e}")
 
 def rimuovi_reminder_db(id_link):
     if supabase:
         try:
             supabase.table("reminders").delete().eq("id", id_link).execute()
-        except Exception: pass
+        except Exception as e: 
+            st.error(f"🛑 Errore DB (Rimozione Reminder): {e}")
 
-# --- FUNZIONI DATABASE AUTORI ---
+# --- FUNZIONI DATABASE AUTORI (NUOVA TABELLA) ---
 def carica_autori_db():
     if supabase:
         try:
-            risposta = supabase.table("autori_monitorati").select("autore").execute()
-            return set(r["autore"] for r in risposta.data if r.get("autore"))
-        except Exception: return set()
+            risposta = supabase.table("storico_autori").select("nome").execute()
+            return set(r["nome"] for r in risposta.data if r.get("nome"))
+        except Exception as e: 
+            st.error(f"🛑 Errore DB (Caricamento Autori): {e}")
+            return set()
     return set()
 
 def salva_autore_db(nome_autore):
     if supabase and nome_autore and nome_autore != "N/D":
         try:
-            supabase.table("autori_monitorati").insert({"autore": nome_autore}).execute()
-        except Exception: pass
+            supabase.table("storico_autori").upsert({"nome": nome_autore}).execute()
+        except Exception as e: 
+            st.error(f"🛑 Errore DB (Salvataggio Autore '{nome_autore}'): {e}")
 
 def rimuovi_autore_db(nome_autore):
     if supabase:
         try:
-            supabase.table("autori_monitorati").delete().eq("autore", nome_autore).execute()
-        except Exception: pass
+            supabase.table("storico_autori").delete().eq("nome", nome_autore).execute()
+        except Exception as e: 
+            st.error(f"🛑 Errore DB (Rimozione Autore): {e}")
 
 # --- INIZIALIZZAZIONE MEMORIA GLOBALE ---
 if 'libri_salvati' not in st.session_state: st.session_state.libri_salvati = carica_preferiti_db()
