@@ -23,7 +23,7 @@ PAGINE_BESTSELLERS = 3
 CSV_FILENAME = "dati_decitre_scraper.csv"
 
 def get_stealth_session():
-    # Passiamo a un'impersonificazione Safari aggiornata (spesso bypassa meglio i filtri su IP datacenter)
+    # Impersonificazione Safari aggiornata per bypassare i filtri su IP datacenter
     session = requests.Session(impersonate="safari17_0")
     
     # LETTURA DEL PROXY DALLE VARIABILI D'AMBIENTE (Webshare)
@@ -42,7 +42,6 @@ def get_stealth_session():
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7",
         "Referer": "https://www.google.fr/",
-        # Headers tipici di Safari
         "Sec-Fetch-Dest": "document",
         "Sec-Fetch-Mode": "navigate",
         "Sec-Fetch-Site": "cross-site",
@@ -98,7 +97,6 @@ def parse_list_page(session, url):
         return []
 
 def get_single_book_details(session, book_url):
-    # 1. Aggiunto "Copertina" nel dizionario di base
     dettagli = {"Editore": "N/D", "Descrizione": "N/D", "Autore": "N/D", "Copertina": ""}
     if not book_url: return dettagli
     
@@ -111,29 +109,41 @@ def get_single_book_details(session, book_url):
             
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        # 🖼️ 2. NUOVA ESTRAZIONE COPERTINA (Migliorata con la tua classe "image")
+        # 🖼️ 1. ESTRAZIONE COPERTINA IN ALTA DEFINIZIONE
         img_tag = soup.find('img', class_='image')
         if img_tag and img_tag.get('src'):
             src = img_tag.get('src')
+            # Rimuove il suffisso dimensionale (es. "-475x500") dall'URL
+            src = re.sub(r'-\d+x\d+', '', src)
             dettagli["Copertina"] = src if src.startswith('http') else "https:" + src
             
-        # 📝 3. NUOVA ESTRAZIONE SINOSSI PULITA (Target mirato sul div 'real-text')
+        # 📝 2. ESTRAZIONE SINOSSI PULITA
         real_text_div = soup.find('div', class_='real-text')
         if real_text_div:
-            # Prende il testo senza "Voir plus" e formatta gli spazi
             dettagli["Descrizione"] = real_text_div.get_text(separator=' ', strip=True)
         else:
-            # Fallback di sicurezza
             desc_div = soup.find('div', id='description') or soup.find(class_=re.compile(r'description'))
             if desc_div: dettagli["Descrizione"] = desc_div.get_text(separator=' ', strip=True)
 
-        for tag in soup.find_all(['li', 'div', 'tr']):
-            testo = tag.get_text(strip=True).lower()
-            if "éditeur" in testo or "editeur" in testo:
-                valore = tag.get_text(separator=' ', strip=True)
-                dettagli["Editore"] = re.sub(r'(?i)éditeurs?|editeurs?|\:', '', valore).strip()
-                break
+        # 🏢 3. ESTRAZIONE EDITORE CHIRURGICA
+        # Cerca esattamente lo span che fa da titolo "Éditeur"
+        editeur_label = soup.find('span', class_=re.compile(r'caption title'), string=re.compile(r'(?i)éditeur|editeur'))
+        
+        if editeur_label:
+            # Prende il "fratello" successivo, che contiene il valore vero e proprio
+            editeur_value = editeur_label.find_next_sibling('span', class_=re.compile(r'body'))
+            if editeur_value:
+                dettagli["Editore"] = editeur_value.get_text(strip=True)
+        else:
+            # Fallback
+            for tag in soup.find_all(['li', 'div', 'tr']):
+                testo = tag.get_text(strip=True).lower()
+                if "éditeur" in testo or "editeur" in testo:
+                    valore = tag.get_text(separator=' ', strip=True)
+                    dettagli["Editore"] = re.sub(r'(?i)éditeurs?|editeurs?|\:', '', valore).strip()
+                    break
 
+        # ✍️ 4. ESTRAZIONE AUTORE
         for tag in soup.find_all(class_=re.compile(r'author', re.I)):
             autore_testo = tag.get_text(strip=True)
             if 2 < len(autore_testo) < 100 and "centre de" not in autore_testo.lower() and "cookies" not in autore_testo.lower():
@@ -180,7 +190,6 @@ def main():
                 book['Editore'] = dettagli['Editore']
                 book['Descrizione'] = dettagli['Descrizione']
                 
-                # 4. SOVRASCRIVE LA COPERTINA se la pagina singola ne ha trovata una ad alta definizione
                 if dettagli.get('Copertina'):
                     book['Copertina'] = dettagli['Copertina']
                     
