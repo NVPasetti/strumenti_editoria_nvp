@@ -109,12 +109,10 @@ def get_single_book_details(session, book_url):
             
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        # 🖼️ 1. ESTRAZIONE COPERTINA IN ALTA DEFINIZIONE
+        # 🖼️ 1. ESTRAZIONE COPERTINA (Prende esattamente l'URL da 475x500px senza romperlo)
         img_tag = soup.find('img', class_='image')
         if img_tag and img_tag.get('src'):
             src = img_tag.get('src')
-            # Rimuove il suffisso dimensionale (es. "-475x500") dall'URL
-            src = re.sub(r'-\d+x\d+', '', src)
             dettagli["Copertina"] = src if src.startswith('http') else "https:" + src
             
         # 📝 2. ESTRAZIONE SINOSSI PULITA
@@ -126,16 +124,13 @@ def get_single_book_details(session, book_url):
             if desc_div: dettagli["Descrizione"] = desc_div.get_text(separator=' ', strip=True)
 
         # 🏢 3. ESTRAZIONE EDITORE CHIRURGICA
-        # Cerca esattamente lo span che fa da titolo "Éditeur"
         editeur_label = soup.find('span', class_=re.compile(r'caption title'), string=re.compile(r'(?i)éditeur|editeur'))
         
         if editeur_label:
-            # Prende il "fratello" successivo, che contiene il valore vero e proprio
             editeur_value = editeur_label.find_next_sibling('span', class_=re.compile(r'body'))
             if editeur_value:
                 dettagli["Editore"] = editeur_value.get_text(strip=True)
         else:
-            # Fallback
             for tag in soup.find_all(['li', 'div', 'tr']):
                 testo = tag.get_text(strip=True).lower()
                 if "éditeur" in testo or "editeur" in testo:
