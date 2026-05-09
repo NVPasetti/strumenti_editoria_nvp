@@ -196,27 +196,34 @@ def get_harper_releases(driver):
             soup = BeautifulSoup(driver.page_source, 'html.parser')
             dettagli = {"Editore": "HarperCollins", "Titolo": "N/D", "Autore": "N/D", "Descrizione": "N/D", "Copertina": "N/D", "Link": link, "Categoria": "Novità"}
             
-            titolo_principale = soup.find('h1', class_='product-title')
-            sottotitolo = soup.find('h3')
-            if titolo_principale: dettagli["Titolo"] = titolo_principale.get_text(strip=True) + (". " + sottotitolo.get_text(strip=True) if sottotitolo else "")
-                
-            author_p = soup.find('p', class_='authorsParse')
-            if author_p:
-                testo_pulito = re.sub(r'(?i)^by\s*', '', author_p.get_text(strip=True)).strip()
-                dettagli["Autore"] = testo_pulito[:-1].strip() if testo_pulito.endswith(',') else testo_pulito
-                
+            # 1. COPERTINA E TITOLO
             img_tag = soup.find('img', id='selected-img')
             if img_tag:
                 src = img_tag.get('src') or img_tag.get('data-src') or ""
-                dettagli["Copertina"] = ("https:" + src) if src.startswith('//') else src
+                if src:
+                    dettagli["Copertina"] = ("https:" + src) if src.startswith('//') else src
                 
+                alt_text = img_tag.get('alt')
+                if alt_text:
+                    dettagli["Titolo"] = alt_text.split(' by ')[0].strip()
+                
+            # 2. AUTORE 
+            author_p = soup.find('p', class_='authorsParse')
+            if author_p:
+                autore_grezzo = author_p.get_text(strip=True)
+                dettagli["Autore"] = re.sub(r'(?i)^By\s+', '', autore_grezzo).strip(', ')
+                
+            # 3. DESCRIZIONE
             desc_div = soup.find('div', id='hc-product-description')
             if desc_div:
                 for btn in desc_div.find_all(['button', 'a']): btn.decompose()
                 dettagli["Descrizione"] = desc_div.get_text(separator=' ', strip=True)
                 
             risultati.append(dettagli)
-        except: continue
+        except Exception as e: 
+            print(f"  [Errore estrazione HarperCollins su {link}: {e}]")
+            continue
+            
     return risultati
 
 # ==========================================
@@ -229,15 +236,14 @@ def get_simon_releases(driver):
     
     soup = BeautifulSoup(driver.page_source, 'html.parser')
     libri_trovati = []
+    
     for div in soup.find_all('div', class_=re.compile(r'column.*is-4')):
         a_tag = div.find('a')
         if a_tag and a_tag.get('href'):
             full_url = a_tag.get('href') if a_tag.get('href').startswith('http') else "https://www.simonandschuster.com" + a_tag.get('href')
             img = a_tag.find('img')
             copertina = (img.get('data-src') or img.get('src')) if img else "N/D"
-            title_div = div.find('div', class_=re.compile(r'book-title'))
-            titolo = title_div.get_text(strip=True) if title_div else "N/D"
-            libri_trovati.append({"Link": full_url, "Titolo": titolo, "Copertina": copertina})
+            libri_trovati.append({"Link": full_url, "Copertina": copertina})
             
     print(f"✅ Trovati {len(libri_trovati)} titoli su Simon & Schuster. Inizio estrazione...")
     
@@ -247,18 +253,33 @@ def get_simon_releases(driver):
             driver.get(libro['Link'])
             time.sleep(random.uniform(2.5, 4.0))
             soup = BeautifulSoup(driver.page_source, 'html.parser')
-            dettagli = {"Editore": "Simon & Schuster", "Titolo": libro['Titolo'], "Autore": "N/D", "Descrizione": "N/D", "Copertina": libro['Copertina'], "Link": libro['Link'], "Categoria": "Novità"}
+            dettagli = {"Editore": "Simon & Schuster", "Titolo": "N/D", "Autore": "N/D", "Descrizione": "N/D", "Copertina": libro['Copertina'], "Link": libro['Link'], "Categoria": "Novità"}
             
-            author_tag = soup.find(class_=re.compile(r'author|contributor', re.I))
-            if author_tag: dettagli["Autore"] = re.sub(r'(?i)^by\s*', '', author_tag.get_text(strip=True))
+            # 1. TITOLO
+            h1_title = soup.find('h1', class_=re.compile(r'book-title'))
+            if h1_title:
+                dettagli["Titolo"] = h1_title.get_text(strip=True)
                 
-            desc_box = soup.find(class_=re.compile(r'description|about|summary|content', re.I))
-            if desc_box:
-                for btn in desc_box.find_all(['button', 'a']): btn.decompose()
-                dettagli["Descrizione"] = desc_box.get_text(separator=' ', strip=True)
+            # 2. AUTORE 
+            author_div = soup.find(lambda tag: tag.name in ['div', 'span', 'p'] and 'is-size-5' in tag.get('class', []) and 'By' in tag.get_text())
+            if author_div:
+                dettagli["Autore"] = re.sub(r'(?i)^By\s+', '', author_div.get_text(strip=True)).strip()
+            else:
+                author_link = soup.find('a', href=re.compile(r'/authors/'))
+                if author_link:
+                    dettagli["Autore"] = author_link.get_text(strip=True)
+                
+            # 3. DESCRIZIONE
+            desc_div = soup.find('div', class_='content')
+            if desc_div:
+                for btn in desc_div.find_all(['button', 'a']): btn.decompose()
+                dettagli["Descrizione"] = desc_div.get_text(separator=' ', strip=True)
                 
             risultati.append(dettagli)
-        except: continue
+        except Exception as e:
+            print(f"  [Errore estrazione Simon & Schuster su {libro['Link']}: {e}]")
+            continue
+            
     return risultati
 
 # ==========================================
@@ -304,7 +325,9 @@ def get_macmillan_releases(driver):
             if author_p:
                 span_label = author_p.find('span', class_=re.compile(r'section-title__label'))
                 if span_label: span_label.decompose()
-                dettagli["Autore"] = author_p.get_text(strip=True)
+                
+                autore_grezzo = author_p.get_text(strip=True)
+                dettagli["Autore"] = re.sub(r'(?i)^(contributors?\s+by\s+|by\s+)', '', autore_grezzo).strip()
 
             desc_div = soup.find('div', class_=re.compile(r'book-about__body'))
             if desc_div:
@@ -312,7 +335,10 @@ def get_macmillan_releases(driver):
                 dettagli["Descrizione"] = desc_div.get_text(separator=' ', strip=True)
                 
             risultati.append(dettagli)
-        except: continue
+        except Exception as e:
+            print(f"  [Errore estrazione Macmillan su {libro['Link']}: {e}]")
+            continue
+            
     return risultati
 
 # ==========================================
