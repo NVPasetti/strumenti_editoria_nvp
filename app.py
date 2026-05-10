@@ -3,6 +3,7 @@ import pandas as pd
 import os
 import datetime
 import re
+import urllib.parse
 from supabase import create_client, Client
 
 # --- CONFIGURAZIONE PAGINA ---
@@ -264,7 +265,7 @@ st.sidebar.header("Strumenti")
 piattaforma = st.sidebar.radio("Scegli servizio:", [
     "🆕 Novità saggistica (30 giorni)", 
     "🔍 Scouting Amazon",
-    "🌍 Mercato internazionale",
+    "🌍 Mercato Internazionale",
     "📺 Palinsesto TV"
 ])
 st.sidebar.markdown("---")
@@ -576,8 +577,8 @@ elif piattaforma == "🔍 Scouting Amazon":
 # ==========================================
 # SEZIONE 3: MERCATO INTERNAZIONALE
 # ==========================================
-elif piattaforma == "🌍 Mercato internazionale":
-    st.title("🌍 Mercato internazionale")
+elif piattaforma == "🌍 Mercato Internazionale":
+    st.title("🌍 Mercato Internazionale")
     st.caption("Esplora le novità e i bestseller dai principali mercati esteri.")
 
     if 'limite_estero_novita' not in st.session_state: st.session_state.limite_estero_novita = 20
@@ -596,11 +597,9 @@ elif piattaforma == "🌍 Mercato internazionale":
         solo_nuovi_estero = st.sidebar.checkbox("🆕 Mostra solo i nuovi arrivi")
         search_estero = st.sidebar.text_input("🔍 Cerca titolo, autore o editore")
         
-        # --- NUOVO FILTRO EDITORI ---
         st.sidebar.subheader("Filtra Editore")
         editori_disponibili_estero = sorted([str(e) for e in df_estero['Editore'].unique() if pd.notna(e) and str(e).strip() != "N/D" and str(e).strip() != ""])
         sel_editore_estero = st.sidebar.multiselect("Seleziona Editore", editori_disponibili_estero, key="filtro_ed_estero")
-        # ----------------------------
 
         if 'old_search_estero' not in st.session_state: st.session_state.old_search_estero = ""
         if 'old_editore_estero' not in st.session_state: st.session_state.old_editore_estero = []
@@ -715,14 +714,20 @@ elif piattaforma == "📺 Palinsesto TV":
                                 else:
                                     st.markdown("<div style='height: 120px; display: flex; justify-content: center; align-items: center; background-color: #f8f9fa; border-radius: 5px; color: gray;'>📺 Nessuna Immagine</div>", unsafe_allow_html=True)
                             
-                            # 2. Colonna Testo (Solo Titolo, Ospiti, Descrizione integrale e Link)
+                            # 2. Colonna Testo
                             with c2:
                                 st.subheader(row['Titolo'])
                                 
-                                # Ospiti in grassetto, puliti
+                                # Ospiti cliccabili e con iniziali maiuscole
                                 ospiti_ai = str(row.get('Ospiti', 'N/D'))
                                 if ospiti_ai not in ["N/D", "nan", "Nessuno", "", "Nessun ospite citato", "Errore AI"]:
-                                    st.markdown(f"**Ospiti: {ospiti_ai}**")
+                                    nomi = [nome.strip().title() for nome in ospiti_ai.split(',')]
+                                    nomi_link = []
+                                    for nome in nomi:
+                                        query = urllib.parse.quote(nome)
+                                        nomi_link.append(f"[{nome}](https://www.google.com/search?q={query})")
+                                    ospiti_cliccabili = ", ".join(nomi_link)
+                                    st.markdown(f"**Ospiti:** {ospiti_cliccabili}")
 
                                 desc_completa = str(row.get('Descrizione_Completa', ''))
                                 
