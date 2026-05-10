@@ -1,4 +1,5 @@
 import sys
+import ssl
 import time
 import re
 import random
@@ -7,6 +8,10 @@ import subprocess
 import pandas as pd
 from datetime import datetime
 from bs4 import BeautifulSoup
+from curl_cffi import requests
+
+# --- FIX SSL PER MAC ---
+ssl._create_default_https_context = ssl._create_unverified_context
 
 # --- IMPORT ANTI-BOT ---
 import undetected_chromedriver as uc
@@ -21,7 +26,13 @@ if sys.stdout.encoding != 'utf-8':
 
 CSV_FILENAME = "dati_internazionali.csv"
 
-# --- CONFIGURAZIONE DRIVER STEALTH (CON FIX VERSIONE DINAMICA) ---
+# --- FUNZIONE HELPER CURL_CFFI (SITI VELOCI) ---
+def get_soup(url):
+    # impersonate="chrome120" aggira i blocchi imitando perfettamente il traffico di Chrome
+    response = requests.get(url, impersonate="chrome120", timeout=15)
+    return BeautifulSoup(response.text, 'html.parser')
+
+# --- CONFIGURAZIONE DRIVER STEALTH (SITI COMPLESSI) ---
 def get_driver():
     options = uc.ChromeOptions()
     options.add_argument('--headless=new') 
@@ -30,10 +41,14 @@ def get_driver():
     options.add_argument('--disable-gpu')
     options.add_argument('--window-size=1920,1080')
     
-    # Trova dinamicamente la versione di Chrome installata
     versione_chrome = None
     try:
-        processo = subprocess.run(['google-chrome', '--version'], capture_output=True, text=True)
+        if sys.platform == 'darwin': # Se il sistema è un Mac
+            comando = ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '--version']
+        else: # Se è Linux/Windows
+            comando = ['google-chrome', '--version']
+            
+        processo = subprocess.run(comando, capture_output=True, text=True)
         versione_completa = processo.stdout.strip()
         versione_chrome = int(versione_completa.split()[2].split('.')[0])
         print(f"🔧 Versione Chrome rilevata sul sistema: {versione_chrome}")
@@ -55,10 +70,10 @@ def get_driver():
     return driver
 
 # ==========================================
-# 🗽 0. NEW YORK TIMES (BESTSELLERS)
+# 🗽 0. NEW YORK TIMES (CURL_CFFI)
 # ==========================================
-def get_nyt_bestsellers(driver):
-    print("\n--- 🗽 AVVIO NEW YORK TIMES BEST SELLERS ---")
+def get_nyt_bestsellers():
+    print("\n--- 🗽 AVVIO NEW YORK TIMES BEST SELLERS (Veloce) ---")
     urls_nyt = [
         ("Hardcover", "https://www.nytimes.com/books/best-sellers/hardcover-nonfiction/"),
         ("Print & E-Book", "https://www.nytimes.com/books/best-sellers/combined-print-and-e-book-nonfiction/"),
@@ -71,14 +86,7 @@ def get_nyt_bestsellers(driver):
     for nome_cat, url in urls_nyt:
         print(f"🔍 Scansione NYT: {nome_cat}...")
         try:
-            driver.get(url)
-            time.sleep(4)
-            for i in range(1, 4):
-                driver.execute_script(f"window.scrollTo(0, {i * 400});")
-                time.sleep(0.5)
-
-            html = driver.page_source
-            soup = BeautifulSoup(html, 'html.parser')
+            soup = get_soup(url)
             titoli_tags = soup.find_all('h3', itemprop='name')
 
             for h3 in titoli_tags:
@@ -113,37 +121,31 @@ def get_nyt_bestsellers(driver):
     return risultati
 
 # ==========================================
-# 🐧 1. PENGUIN RANDOM HOUSE
+# 🐧 1. PENGUIN RANDOM HOUSE (CURL_CFFI)
 # ==========================================
-def get_penguin_releases(driver):
-    print("\n--- 🐧 AVVIO PENGUIN RANDOM HOUSE (5 Pagine) ---")
+def get_penguin_releases():
+    print("\n--- 🐧 AVVIO PENGUIN RANDOM HOUSE (Veloce) ---")
     urls_da_visitare = []
     
     for page in range(1, 6):
         url = f"https://www.penguinrandomhouse.com/books/new-releases-nonfiction/?page={page}"
         print(f"🔍 Scansione Vetrina Penguin Pagina {page}...")
-        driver.get(url)
-        time.sleep(4)
-        for i in range(1, 4):
-            driver.execute_script(f"window.scrollTo(0, {i * 400});")
-            time.sleep(0.5)
-        
-        html = driver.page_source
-        soup = BeautifulSoup(html, 'html.parser')
-        
-        for l in soup.find_all('a', href=re.compile(r'/books/\d+/')):
-            href = l['href']
-            full_url = href if href.startswith('http') else "https://www.penguinrandomhouse.com" + href
-            if full_url not in urls_da_visitare: urls_da_visitare.append(full_url)
+        try:
+            soup = get_soup(url)
+            for l in soup.find_all('a', href=re.compile(r'/books/\d+/')):
+                href = l['href']
+                full_url = href if href.startswith('http') else "https://www.penguinrandomhouse.com" + href
+                if full_url not in urls_da_visitare: urls_da_visitare.append(full_url)
+        except Exception as e:
+            print(f"⚠️ Errore pagina Penguin: {e}")
                 
     print(f"✅ Trovati {len(urls_da_visitare)} titoli su Penguin. Inizio estrazione...")
     
     risultati = []
     for link in urls_da_visitare:
         try:
-            driver.get(link)
-            time.sleep(random.uniform(2.0, 3.5))
-            soup = BeautifulSoup(driver.page_source, 'html.parser')
+            time.sleep(random.uniform(0.5, 1.5)) # Piccola pausa per non intasare il server
+            soup = get_soup(link)
             dettagli = {"Editore": "Penguin Random House", "Titolo": "N/D", "Autore": "N/D", "Descrizione": "N/D", "Copertina": "N/D", "Link": link, "Categoria": "Novità"}
             
             h1 = soup.find('h1')
@@ -167,7 +169,7 @@ def get_penguin_releases(driver):
     return risultati
 
 # ==========================================
-# 📚 2. HARPERCOLLINS
+# 📚 2. HARPERCOLLINS (SELENIUM - Invariato)
 # ==========================================
 def get_harper_releases(driver):
     print("\n--- 📚 AVVIO HARPERCOLLINS ---")
@@ -227,63 +229,63 @@ def get_harper_releases(driver):
     return risultati
 
 # ==========================================
-# 🌳 3. SIMON & SCHUSTER
+# 🌳 3. SIMON & SCHUSTER (CURL_CFFI)
 # ==========================================
-def get_simon_releases(driver):
-    print("\n--- 🌳 AVVIO SIMON & SCHUSTER ---")
-    driver.get("https://www.simonandschuster.com/p/new-releases#non-fiction")
-    time.sleep(5)
-    
-    soup = BeautifulSoup(driver.page_source, 'html.parser')
-    libri_trovati = []
-    
-    for div in soup.find_all('div', class_=re.compile(r'column.*is-4')):
-        a_tag = div.find('a')
-        if a_tag and a_tag.get('href'):
-            full_url = a_tag.get('href') if a_tag.get('href').startswith('http') else "https://www.simonandschuster.com" + a_tag.get('href')
-            img = a_tag.find('img')
-            copertina = (img.get('data-src') or img.get('src')) if img else "N/D"
-            libri_trovati.append({"Link": full_url, "Copertina": copertina})
-            
-    print(f"✅ Trovati {len(libri_trovati)} titoli su Simon & Schuster. Inizio estrazione...")
-    
-    risultati = []
-    for libro in libri_trovati:
-        try:
-            driver.get(libro['Link'])
-            time.sleep(random.uniform(2.5, 4.0))
-            soup = BeautifulSoup(driver.page_source, 'html.parser')
-            dettagli = {"Editore": "Simon & Schuster", "Titolo": "N/D", "Autore": "N/D", "Descrizione": "N/D", "Copertina": libro['Copertina'], "Link": libro['Link'], "Categoria": "Novità"}
-            
-            # 1. TITOLO
-            h1_title = soup.find('h1', class_=re.compile(r'book-title'))
-            if h1_title:
-                dettagli["Titolo"] = h1_title.get_text(strip=True)
+def get_simon_releases():
+    print("\n--- 🌳 AVVIO SIMON & SCHUSTER (Veloce) ---")
+    try:
+        soup = get_soup("https://www.simonandschuster.com/p/new-releases#non-fiction")
+        libri_trovati = []
+        
+        for div in soup.find_all('div', class_=re.compile(r'column.*is-4')):
+            a_tag = div.find('a')
+            if a_tag and a_tag.get('href'):
+                full_url = a_tag.get('href') if a_tag.get('href').startswith('http') else "https://www.simonandschuster.com" + a_tag.get('href')
+                img = a_tag.find('img')
+                copertina = (img.get('data-src') or img.get('src')) if img else "N/D"
+                libri_trovati.append({"Link": full_url, "Copertina": copertina})
                 
-            # 2. AUTORE 
-            author_div = soup.find(lambda tag: tag.name in ['div', 'span', 'p'] and 'is-size-5' in tag.get('class', []) and 'By' in tag.get_text())
-            if author_div:
-                dettagli["Autore"] = re.sub(r'(?i)^By\s+', '', author_div.get_text(strip=True)).strip()
-            else:
-                author_link = soup.find('a', href=re.compile(r'/authors/'))
-                if author_link:
-                    dettagli["Autore"] = author_link.get_text(strip=True)
+        print(f"✅ Trovati {len(libri_trovati)} titoli su Simon & Schuster. Inizio estrazione...")
+        
+        risultati = []
+        for libro in libri_trovati:
+            try:
+                time.sleep(random.uniform(0.5, 1.5))
+                soup = get_soup(libro['Link'])
+                dettagli = {"Editore": "Simon & Schuster", "Titolo": "N/D", "Autore": "N/D", "Descrizione": "N/D", "Copertina": libro['Copertina'], "Link": libro['Link'], "Categoria": "Novità"}
                 
-            # 3. DESCRIZIONE
-            desc_div = soup.find('div', class_='content')
-            if desc_div:
-                for btn in desc_div.find_all(['button', 'a']): btn.decompose()
-                dettagli["Descrizione"] = desc_div.get_text(separator=' ', strip=True)
+                # 1. TITOLO
+                h1_title = soup.find('h1', class_=re.compile(r'book-title'))
+                if h1_title:
+                    dettagli["Titolo"] = h1_title.get_text(strip=True)
+                    
+                # 2. AUTORE 
+                author_div = soup.find(lambda tag: tag.name in ['div', 'span', 'p'] and 'is-size-5' in tag.get('class', []) and 'By' in tag.get_text())
+                if author_div:
+                    dettagli["Autore"] = re.sub(r'(?i)^By\s+', '', author_div.get_text(strip=True)).strip()
+                else:
+                    author_link = soup.find('a', href=re.compile(r'/authors/'))
+                    if author_link:
+                        dettagli["Autore"] = author_link.get_text(strip=True)
+                    
+                # 3. DESCRIZIONE
+                desc_div = soup.find('div', class_='content')
+                if desc_div:
+                    for btn in desc_div.find_all(['button', 'a']): btn.decompose()
+                    dettagli["Descrizione"] = desc_div.get_text(separator=' ', strip=True)
+                    
+                risultati.append(dettagli)
+            except Exception as e:
+                print(f"  [Errore estrazione Simon & Schuster su {libro['Link']}: {e}]")
+                continue
                 
-            risultati.append(dettagli)
-        except Exception as e:
-            print(f"  [Errore estrazione Simon & Schuster su {libro['Link']}: {e}]")
-            continue
-            
-    return risultati
+        return risultati
+    except Exception as e:
+        print(f"⚠️ Errore su vetrina Simon & Schuster: {e}")
+        return []
 
 # ==========================================
-# Ⓜ️ 4. MACMILLAN
+# Ⓜ️ 4. MACMILLAN (SELENIUM - Invariato)
 # ==========================================
 def get_macmillan_releases(driver):
     print("\n--- Ⓜ️ AVVIO MACMILLAN ---")
@@ -342,71 +344,74 @@ def get_macmillan_releases(driver):
     return risultati
 
 # ==========================================
-# 🏰 5. HACHETTE
+# 🏰 5. HACHETTE (CURL_CFFI)
 # ==========================================
-def get_hachette_releases(driver):
-    print("\n--- 🏰 AVVIO HACHETTE ---")
-    driver.get("https://www.hachettebookgroup.com/genre-category/nonfiction/")
-    time.sleep(5)
-    
+def get_hachette_releases():
+    print("\n--- 🏰 AVVIO HACHETTE (Veloce) ---")
     try:
-        driver.execute_script("let btn = document.querySelector('button[id^=\"carousel-\"]'); if(btn) btn.click();")
-        time.sleep(1.5)
-    except: pass
-
-    soup = BeautifulSoup(driver.page_source, 'html.parser')
-    urls_visti = set()
-    for l in soup.find_all('a', href=re.compile(r'/titles/')):
-        full_url = l['href'] if l['href'].startswith('http') else "https://www.hachettebookgroup.com" + l['href']
-        urls_visti.add(full_url)
+        soup = get_soup("https://www.hachettebookgroup.com/genre-category/nonfiction/")
         
-    print(f"✅ Trovati {len(urls_visti)} titoli su Hachette. Inizio estrazione...")
-    
-    risultati = []
-    for link in urls_visti:
-        try:
-            driver.get(link)
-            time.sleep(random.uniform(2.5, 4.0))
-            soup = BeautifulSoup(driver.page_source, 'html.parser')
-            dettagli = {"Editore": "Hachette", "Titolo": "N/D", "Autore": "N/D", "Descrizione": "N/D", "Copertina": "N/D", "Link": link, "Categoria": "Novità"}
+        urls_visti = set()
+        for l in soup.find_all('a', href=re.compile(r'/titles/')):
+            full_url = l['href'] if l['href'].startswith('http') else "https://www.hachettebookgroup.com" + l['href']
+            urls_visti.add(full_url)
             
-            h1 = soup.find('h1')
-            if h1: dettagli["Titolo"] = h1.get_text(strip=True)
+        print(f"✅ Trovati {len(urls_visti)} titoli su Hachette. Inizio estrazione...")
+        
+        risultati = []
+        for link in urls_visti:
+            try:
+                time.sleep(random.uniform(0.5, 1.5))
+                soup = get_soup(link)
+                dettagli = {"Editore": "Hachette", "Titolo": "N/D", "Autore": "N/D", "Descrizione": "N/D", "Copertina": "N/D", "Link": link, "Categoria": "Novità"}
                 
-            author_tag = soup.find(class_=re.compile(r'author|contributor', re.I))
-            if author_tag:
-                parti = re.split(r'(?i)by\s+', author_tag.get_text(strip=True))
-                dettagli["Autore"] = parti[-1].strip() if len(parti) > 1 else author_tag.get_text(strip=True)
-                
-            desc_box = soup.find(id=re.compile(r'description|about', re.I)) or soup.find(class_=re.compile(r'description|about|summary', re.I))
-            if desc_box:
-                for btn in desc_box.find_all(['button', 'a']): btn.decompose()
-                dettagli["Descrizione"] = desc_box.get_text(separator=' ', strip=True)
-                
-            img_tag = soup.find('img', class_=re.compile(r'cover|product|book', re.I))
-            if img_tag: dettagli["Copertina"] = img_tag.get('data-src') or img_tag.get('src') or ""
-                
-            risultati.append(dettagli)
-        except: continue
-    return risultati
-
+                h1 = soup.find('h1')
+                if h1: dettagli["Titolo"] = h1.get_text(strip=True)
+                    
+                author_tag = soup.find(class_=re.compile(r'author|contributor', re.I))
+                if author_tag:
+                    parti = re.split(r'(?i)by\s+', author_tag.get_text(strip=True))
+                    dettagli["Autore"] = parti[-1].strip() if len(parti) > 1 else author_tag.get_text(strip=True)
+                    
+                desc_box = soup.find(id=re.compile(r'description|about', re.I)) or soup.find(class_=re.compile(r'description|about|summary', re.I))
+                if desc_box:
+                    for btn in desc_box.find_all(['button', 'a']): btn.decompose()
+                    dettagli["Descrizione"] = desc_box.get_text(separator=' ', strip=True)
+                    
+                img_tag = soup.find('img', class_=re.compile(r'cover|product|book', re.I))
+                if img_tag: dettagli["Copertina"] = img_tag.get('data-src') or img_tag.get('src') or ""
+                    
+                risultati.append(dettagli)
+            except: continue
+        return risultati
+    except Exception as e:
+        print(f"⚠️ Errore su vetrina Hachette: {e}")
+        return []
 
 # ==========================================
-# 🚀 FUNZIONE MAIN (MODALITÀ PULITA E SOVRASCRITTURA)
+# 🚀 FUNZIONE MAIN (MODALITÀ IBRIDA E SOVRASCRITTURA)
 # ==========================================
 def main():
-    print(f"🚀 Avvio Scraper Internazionale (Modalità Clean & Overwrite)...")
-    driver = get_driver()
+    print(f"🚀 Avvio Scraper Internazionale Ibrido (Clean & Overwrite)...")
     tutti_i_dati = []
     
     try:
-        tutti_i_dati.extend(get_nyt_bestsellers(driver))
-        tutti_i_dati.extend(get_penguin_releases(driver))
-        tutti_i_dati.extend(get_harper_releases(driver))
-        tutti_i_dati.extend(get_simon_releases(driver))
-        tutti_i_dati.extend(get_macmillan_releases(driver))
-        tutti_i_dati.extend(get_hachette_releases(driver))
+        # FASE 1: SITI VELOCI (Nessun browser caricato in memoria)
+        tutti_i_dati.extend(get_nyt_bestsellers())
+        tutti_i_dati.extend(get_penguin_releases())
+        tutti_i_dati.extend(get_simon_releases())
+        tutti_i_dati.extend(get_hachette_releases())
         
+        # FASE 2: SITI JS (Apre il browser in background)
+        print("\n⚙️ Inizializzazione Chrome invisibile per i siti complessi...")
+        driver = get_driver()
+        try:
+            tutti_i_dati.extend(get_harper_releases(driver))
+            tutti_i_dati.extend(get_macmillan_releases(driver))
+        finally:
+            driver.quit() # Assicurati che si chiuda alla fine
+        
+        # FASE 3: SALVATAGGIO DATI
         if tutti_i_dati:
             df = pd.DataFrame(tutti_i_dati)
             
@@ -429,8 +434,6 @@ def main():
             
     except Exception as e:
         print(f"⚠️ Errore critico globale: {e}")
-    finally:
-        driver.quit()
 
 if __name__ == "__main__":
     main()
