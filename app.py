@@ -486,7 +486,7 @@ if piattaforma == "🆕 Novità saggistica (30 giorni)":
                                         salva_autore_db(autore_libro)
                                         
                                 st.rerun()
-                        st.markdown("---")
+                    st.markdown("---")
 
                 if st.session_state.limite_ibs_altri < len(df_altri):
                     if st.button("⬇️ Carica altri 20 libri", use_container_width=True, key="load_more_ibs_altri"):
@@ -596,14 +596,30 @@ elif piattaforma == "🌍 Mercato Internazionale":
         solo_nuovi_estero = st.sidebar.checkbox("🆕 Mostra solo i nuovi arrivi")
         search_estero = st.sidebar.text_input("🔍 Cerca titolo, autore o editore")
         
+        # --- NUOVO FILTRO EDITORI ---
+        st.sidebar.subheader("Filtra Editore")
+        editori_disponibili_estero = sorted([str(e) for e in df_estero['Editore'].unique() if pd.notna(e) and str(e).strip() != "N/D" and str(e).strip() != ""])
+        sel_editore_estero = st.sidebar.multiselect("Seleziona Editore", editori_disponibili_estero, key="filtro_ed_estero")
+        # ----------------------------
+
         if 'old_search_estero' not in st.session_state: st.session_state.old_search_estero = ""
-        if search_estero != st.session_state.old_search_estero:
+        if 'old_editore_estero' not in st.session_state: st.session_state.old_editore_estero = []
+
+        if search_estero != st.session_state.old_search_estero or sel_editore_estero != st.session_state.old_editore_estero:
             st.session_state.limite_estero_novita = 20
             st.session_state.limite_estero_best = 20
             st.session_state.old_search_estero = search_estero
+            st.session_state.old_editore_estero = sel_editore_estero
 
-        if solo_nuovi_estero: df_estero = df_estero[df_estero['Nuovo'] == True]
-        if search_estero: df_estero = df_estero[df_estero.astype(str).apply(lambda x: x.str.contains(search_estero, case=False)).any(axis=1)]
+        # Applicazione dei filtri sul dataframe
+        if solo_nuovi_estero: 
+            df_estero = df_estero[df_estero['Nuovo'] == True]
+            
+        if search_estero: 
+            df_estero = df_estero[df_estero.astype(str).apply(lambda x: x.str.contains(search_estero, case=False)).any(axis=1)]
+            
+        if sel_editore_estero: 
+            df_estero = df_estero[df_estero['Editore'].isin(sel_editore_estero)]
 
         df_novita = df_estero[df_estero['Categoria'].str.contains('Novità', case=False, na=False)]
         df_bestseller = df_estero[~df_estero['Categoria'].str.contains('Novità', case=False, na=False)]
