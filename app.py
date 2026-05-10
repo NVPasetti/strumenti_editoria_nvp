@@ -265,7 +265,7 @@ piattaforma = st.sidebar.radio("Scegli servizio:", [
     "🆕 Novità saggistica (30 giorni)", 
     "🔍 Scouting Amazon",
     "🌍 Mercato Internazionale",
-    "📺 Palinsesto Programmi TV"
+    "📺 Palinsesto TV"
 ])
 st.sidebar.markdown("---")
 
@@ -655,7 +655,7 @@ elif piattaforma == "🌍 Mercato Internazionale":
 # ==========================================
 # SEZIONE 4: PALINSESTO PROGRAMMI TV
 # ==========================================
-elif piattaforma == "📺 Palinsesto Programmi TV":
+elif piattaforma == "📺 Palinsesto TV":
     st.title("📅 Agenda Programmi TV")
     st.caption("Monitora i palinsesti e scopri i dettagli dei principali programmi televisivi italiani.")
 
