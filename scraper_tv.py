@@ -32,8 +32,6 @@ if GEMINI_KEY:
             models_data = json.loads(response.read().decode())
             available_models = [m['name'] for m in models_data.get('models', []) if 'generateContent' in m.get('supportedGenerationMethods', [])]
             
-            # --- LISTA DELLE PRIORITÀ AGGIORNATA ---
-            # Abbiamo messo gemini-3.1-flash-lite in cima assoluta come da tua richiesta
             preferiti = [
                 'models/gemini-3.1-flash-lite', 
                 'models/gemini-2.0-flash', 
@@ -48,10 +46,8 @@ if GEMINI_KEY:
                     ACTIVE_MODEL = pref
                     break
             
-            # Se per qualche motivo l'API non lo elenca tra quelli standard, lo forziamo!
             if not ACTIVE_MODEL:
                 if 'models/gemini-3.1-flash-lite' not in available_models:
-                    print("⚠️ Il modello 3.1 Flash Lite non è nella lista pubblica, ma provo a forzarlo...")
                     ACTIVE_MODEL = 'models/gemini-3.1-flash-lite'
                 elif available_models:
                     ACTIVE_MODEL = available_models[0]
@@ -101,7 +97,6 @@ def estrai_ospiti_ai(titolo, descrizione, is_retry=False):
     req = urllib.request.Request(url, data=payload, headers={'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0'})
     
     try:
-        # Pausa di 5 secondi: perfetta per un limite di 500 RPD
         time.sleep(5) 
         with urllib.request.urlopen(req) as response:
             result = json.loads(response.read().decode())
@@ -111,7 +106,6 @@ def estrai_ospiti_ai(titolo, descrizione, is_retry=False):
                 res = res.strip("*-.\n\t ")
                 return res.capitalize() if res else "N/D"
             except (KeyError, IndexError):
-                print(f"⚠️ Struttura risposta inattesa su '{titolo[:20]}'")
                 return "N/D"
                 
     except urllib.error.HTTPError as e:
@@ -120,11 +114,8 @@ def estrai_ospiti_ai(titolo, descrizione, is_retry=False):
             time.sleep(30)
             return estrai_ospiti_ai(titolo, descrizione, is_retry=True)
             
-        error_info = e.read().decode()
-        print(f"❌ HTTP Error {e.code} su '{titolo[:20]}': {error_info}")
         return "N/D"
     except Exception as e:
-        print(f"❌ Errore critico connessione su '{titolo[:20]}': {e}")
         return "N/D"
 
 def get_stealth_session():
@@ -144,8 +135,55 @@ def get_date_from_article(session, url):
     except: pass
     return "N/D"
 
+# --- NUOVA FUNZIONE: OTTO E MEZZO ---
+def scrape_otto_e_mezzo(session):
+    print("\n📺 Controllo ultima puntata di Otto e Mezzo...")
+    url_base = "https://www.la7.it/otto-e-mezzo/rivedila7"
+    try:
+        res = session.get(url_base)
+        soup = BeautifulSoup(res.text, 'html.parser')
+        
+        marker_ultima = soup.find('div', class_=re.compile(r'scritta_ultima'))
+        if not marker_ultima: return None
+            
+        card = marker_ultima.find_parent('div', class_=re.compile(r'holder-bg'))
+        a_tag = marker_ultima.find_parent('a')
+        
+        link_puntata = "N/D"
+        data_puntata = "N/D"
+        
+        if a_tag and a_tag.get('href'):
+            link_puntata = a_tag.get('href')
+            if not link_puntata.startswith('http'): link_puntata = "https://www.la7.it" + link_puntata
+            match_data = re.search(r'(\d{2}-\d{2}-\d{4})', link_puntata)
+            if match_data: data_puntata = match_data.group(1).replace('-', '/')
+                
+        immagine = "N/D"
+        if card and card.get('data-background-image'):
+            img_raw = card.get('data-background-image')
+            immagine = ("https:" + img_raw) if img_raw.startswith('//') else img_raw
+            
+        ospiti = "N/D"
+        occhiello = card.find('div', class_=re.compile(r'occhiello')) if card else None
+        if occhiello:
+            testo_raw = occhiello.get_text(strip=True)
+            ospiti = re.sub(r'(?i)^Ospiti(?: di Lilli Gruber)?\s*:\s*', '', testo_raw).strip()
+            
+        return {
+            "Data": data_puntata,
+            "Titolo": "Otto e Mezzo",
+            "Descrizione_Completa": "", 
+            "Ospiti": ospiti,
+            "Immagine": immagine,
+            "Link": link_puntata
+        }
+    except Exception as e:
+        print(f"❌ Errore Otto e Mezzo: {e}")
+        return None
+
+
 def scrape_ospiti_tv():
-    print("📺 Avvio scraper incrementale DavideMaggio.it con AI (Metodo API Nativo)...")
+    print("📺 Avvio scraper Palinsesto TV (La7 + DavideMaggio)...")
     session = get_stealth_session()
     
     df_old = pd.DataFrame()
@@ -164,12 +202,23 @@ def scrape_ospiti_tv():
             df_old = pd.DataFrame()
 
     nuovi_dati = []
+    
+    # --- 1. ESECUZIONE OTTO E MEZZO ---
+    otto_data = scrape_otto_e_mezzo(session)
+    if otto_data and otto_data["Link"] not in link_visti:
+        nuovi_dati.append(otto_data)
+        link_visti.add(otto_data["Link"])
+        print("✅ Otto e Mezzo aggiunto alle novità.")
+    elif otto_data:
+        print("🛑 L'ultima puntata di Otto e Mezzo è già presente nel database.")
+
+    # --- 2. ESECUZIONE DAVIDEMAGGIO ---
     stop_scraping = False
     page = 1
 
     while not stop_scraping:
         url = f"{BASE_URL}/page/{page}" if page > 1 else BASE_URL
-        print(f"\n📄 Analizzo pagina {page}...")
+        print(f"\n📄 Analizzo pagina {page} di DavideMaggio...")
         
         try:
             response = session.get(url)
