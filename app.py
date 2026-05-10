@@ -530,8 +530,7 @@ elif piattaforma == "🔍 Amazon":
         st.sidebar.header("Filtri Amazon")
         categorie_amz = ["Tutte"] + sorted(df_amz['Categoria'].unique().tolist())
         sel_cat_amz = st.sidebar.selectbox("Reparto:", categorie_amz)
-        max_recensioni = int(df_amz['Recensioni'].max()) if not df_amz.empty else 1000
-        min_rec_amz = st.sidebar.slider("Filtra per popolarità (min. recensioni):", 0, max_recensioni, value=35, step=10)
+        min_rec_amz = st.sidebar.slider("Filtra per popolarità (min. recensioni):", 0, 1000, value=35, step=10)
         ord_amz = st.sidebar.radio("Ordina per recensioni:", ["Decrescente (Più recensioni)", "Crescente (Meno recensioni)"])
         is_ascending_amz = True if ord_amz == "Crescente (Meno recensioni)" else False
 
