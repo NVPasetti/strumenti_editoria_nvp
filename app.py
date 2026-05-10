@@ -718,9 +718,13 @@ elif piattaforma == "📺 Palinsesto TV":
                             with c2:
                                 st.subheader(row['Titolo'])
                                 
-                                # Ospiti cliccabili e con iniziali maiuscole
-                                ospiti_ai = str(row.get('Ospiti', 'N/D'))
-                                if ospiti_ai not in ["N/D", "nan", "Nessuno", "", "Nessun ospite citato", "Errore AI"]:
+                                # Ospiti cliccabili e con iniziali maiuscole (Filtro N/D corazzato)
+                                ospiti_ai = str(row.get('Ospiti', 'N/D')).strip()
+                                
+                                # Lista di tutte le possibili parole chiave per i campi vuoti
+                                hide_list = ["n/d", "nan", "nessuno", "", "nessun ospite citato", "errore ai", "nessun ospite"]
+                                
+                                if ospiti_ai.lower() not in hide_list:
                                     nomi = [nome.strip().title() for nome in ospiti_ai.split(',')]
                                     nomi_link = []
                                     for nome in nomi:
