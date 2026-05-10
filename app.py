@@ -230,7 +230,7 @@ def mostra_griglia_libri(df_da_mostrare, limite_key, tab_id):
                             st.markdown(f"""
                             <div style='height: 80px; line-height: 1.4; text-align: left;'>
                                 <span style='font-size: 0.85em; color: gray;'>Di: <b>{autore_corto}</b></span><br>
-                                <span style='font-size: 0.9em;'>⭐⭐⭐⭐⭐ ({int(row['Recensioni'])})</span><br>
+                                <span style='font-size: 0.9em;'>Recensioni: ({int(row['Recensioni'])})</span><br>
                                 <span style='font-size: 0.8em; color: gray;'>Reparto: {row.get('Categoria', 'N/D')}</span>
                             </div>
                             """, unsafe_allow_html=True)
@@ -264,8 +264,8 @@ def mostra_griglia_libri(df_da_mostrare, limite_key, tab_id):
 st.sidebar.header("Strumenti")
 piattaforma = st.sidebar.radio("Scegli servizio:", [
     "🆕 Novità saggistica (30 giorni)", 
-    "🔍 Scouting Amazon",
-    "🌍 Mercato Internazionale",
+    "🔍 Amazon",
+    "🌍 Mercato internazionale",
     "📺 Palinsesto TV"
 ])
 st.sidebar.markdown("---")
@@ -497,7 +497,7 @@ if piattaforma == "🆕 Novità saggistica (30 giorni)":
 # ==========================================
 # SEZIONE 2: SCOUTING AMAZON
 # ==========================================
-elif piattaforma == "🔍 Scouting Amazon":
+elif piattaforma == "🔍 Amazon":
     st.title("I più recensiti - Amazon")
     st.caption("Esplora i libri più popolari, salvali e aggiungi le tue note.")
 
@@ -577,7 +577,7 @@ elif piattaforma == "🔍 Scouting Amazon":
 # ==========================================
 # SEZIONE 3: MERCATO INTERNAZIONALE
 # ==========================================
-elif piattaforma == "🌍 Mercato Internazionale":
+elif piattaforma == "🌍 Mercato internazionale":
     st.title("🌍 Mercato Internazionale")
     st.caption("Esplora le novità e i bestseller dai principali mercati esteri.")
 
@@ -593,7 +593,7 @@ elif piattaforma == "🌍 Mercato Internazionale":
     if df_estero is None:
         st.warning(f"⚠️ Dati per {mercato_scelto} non trovati. Assicurati che lo scraper abbia generato il file '{file_estero}'.")
     else:
-        st.sidebar.header("Filtri Internazionali")
+        st.sidebar.header("Filtri internazionali")
         solo_nuovi_estero = st.sidebar.checkbox("🆕 Mostra solo i nuovi arrivi")
         search_estero = st.sidebar.text_input("🔍 Cerca titolo, autore o editore")
         
